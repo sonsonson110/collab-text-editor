@@ -1,6 +1,8 @@
 import type { Change } from "@/core/document/change";
 import { LineIndex } from "@/core/lines/lineIndex";
+import type { Position } from "@/core/position/position";
 
+// Central API for document management
 export class Document {
   private text: string;
   private lineIndex: LineIndex;
@@ -19,8 +21,8 @@ export class Document {
   }
 
   applyChange(change: Change): void {
-    const startOffset = this.offsetFromPosition(change.range.start);
-    const endOffset = this.offsetFromPosition(change.range.end);
+    const startOffset = this.getOffsetAt(change.range.start);
+    const endOffset = this.getOffsetAt(change.range.end);
 
     this.text =
       this.text.slice(0, startOffset) +
@@ -30,8 +32,11 @@ export class Document {
     this.lineIndex.rebuild(this.text);
   }
 
-  private offsetFromPosition(pos: { line: number; column: number }): number {
-    const lineStart = this.lineIndex.getLineStart(pos.line);
-    return lineStart + pos.column;
+  getPositionAt(offset: number): Position {
+    return this.lineIndex.offsetToPosition(offset);
+  }
+
+  getOffsetAt(position: Position): number {
+    return this.lineIndex.positionToOffset(position);
   }
 }
