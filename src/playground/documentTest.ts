@@ -1,6 +1,7 @@
 import { Document } from "@/core/document/document";
 import { insertText } from "@/core/document/operation";
-import { Position, Range } from "@/core/position";
+import { Position } from "@/core/position/position";
+import { Range } from "@/core/position/range";
 
 const doc = new Document("Line1\nLine 2\nLine 3");
 
