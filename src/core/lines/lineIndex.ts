@@ -1,6 +1,13 @@
 import { Position } from "@core/position/position";
 
-export class LineIndex {
+interface ILineIndex {
+  getLineCount(): number;
+  getLineStart(line: number): number;
+  positionToOffset(position: Position): number;
+  offsetToPosition(offset: number): Position;
+}
+
+export class LineIndex implements ILineIndex {
   // lineStarts[i] is the index of the first character of line i+1 in the document text
   // lineStarts[0] = offset of first line
   // lineStarts[1] = offset of second line
