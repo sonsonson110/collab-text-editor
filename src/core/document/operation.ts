@@ -1,5 +1,5 @@
 import type { Change } from "@/core/document/change";
-import type { Range } from "@core/position";
+import type { Range } from "@core/position/range";
 
 export function insertText(range: Range, text: string): Change {
   return {
