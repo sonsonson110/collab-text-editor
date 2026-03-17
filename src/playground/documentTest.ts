@@ -5,23 +5,19 @@ import { EditorState } from "@/editor/editorState";
 
 const rawText = "Hello\nWorld\nEditor";
 const doc = new Document(rawText);
-let cursor = new Cursor(new Position(0, 0));
+const cursor = new Cursor(new Position(0, 0));
 const editor = new EditorState(doc, cursor);
 
 console.log("Initial text:");
 console.log(editor.document.getText());
 
-const offset = 8;
-const position = editor.document.getPositionAt(offset);
-console.log(`Position at offset ${offset}:`, position);
-console.log("Text at position:", editor.document.getText()[offset]);
-
-const insertPosition = editor.cursor.getStart();
-editor.document.insert(insertPosition, "!");
+editor.insert("!");
 console.log("Text after change:");
 console.log(editor.document.getText());
+console.log("Cursor position after replacement:", editor.cursor);
 
-cursor = new Cursor(new Position(2, 0), new Position(2, 10));
-editor.document.replace(cursor.toRange(), "New Editor");
+editor.cursor = new Cursor(new Position(2, 0), new Position(2, 10));
+editor.replaceSelection("New Editor");
 console.log("Text after replacement:");
 console.log(editor.document.getText());
+console.log("Cursor position after replacement:", editor.cursor);

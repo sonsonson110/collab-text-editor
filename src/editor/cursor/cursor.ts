@@ -6,11 +6,15 @@ interface ICursor {
   getStart(): Position;
   getEnd(): Position;
   toRange(): Range;
+  moveTo(position: Position): Cursor;
+  setActive(position: Position): Cursor;
+  collapseToStart(): Cursor;
+  collapseToEnd(): Cursor;
 }
 
 export class Cursor implements ICursor {
-  anchor: Position;
-  active: Position;
+  readonly anchor: Position;
+  readonly active: Position;
 
   constructor(anchor: Position, active?: Position) {
     this.anchor = anchor;
@@ -32,5 +36,21 @@ export class Cursor implements ICursor {
 
   toRange(): Range {
     return new Range(this.anchor, this.active);
+  }
+
+  moveTo(position: Position): Cursor {
+    return new Cursor(position);
+  }
+
+  setActive(position: Position): Cursor {
+    return new Cursor(this.anchor, position);
+  }
+
+  collapseToStart(): Cursor {
+    return new Cursor(this.getStart());
+  }
+
+  collapseToEnd(): Cursor {
+    return new Cursor(this.getEnd());
   }
 }
