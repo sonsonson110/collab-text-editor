@@ -16,8 +16,8 @@ console.log("Text after change:");
 console.log(editor.document.getText());
 console.log("Cursor position after replacement:", editor.cursor);
 
-editor.cursor = new Cursor(new Position(2, 0), new Position(2, 10));
-editor.replaceSelection("New Editor");
+editor.setCursor(new Cursor(new Position(2, 0), new Position(2, 10)));
+editor.insert("New Editor");
 console.log("Text after replacement:");
 console.log(editor.document.getText());
 console.log("Cursor position after replacement:", editor.cursor);

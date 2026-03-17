@@ -3,8 +3,8 @@ import { Position } from "@/core/position/position";
 import { Cursor } from "@/editor/cursor/cursor";
 
 interface IEditorState {
+  setCursor(cursor: Cursor): void;
   insert(text: string): void;
-  replaceSelection(newText: string): void;
   deleteSelection(): void;
 }
 
@@ -17,26 +17,19 @@ export class EditorState implements IEditorState {
     this.cursor = cursor;
   }
 
-  insert(text: string): void {
-    const position = this.cursor.getStart();
-    this.document.insert(position, text);
-
-    // Move cursor after the inserted text
-    const newCursor = this.cursor.moveTo(
-      new Position(position.line, position.column + text.length),
-    );
-    this.cursor = newCursor;
+  setCursor(cursor: Cursor): void {
+    this.cursor = cursor;
   }
 
-  replaceSelection(newText: string): void {
+  // TODO: Handle multi-line selections and complex insertions
+  insert(text: string): void {
     const range = this.cursor.toRange();
-    this.document.replace(range, newText);
+    this.document.replace(range, text);
 
     // Move cursor to the end of the replaced text
-    const newCursor = this.cursor.moveTo(
-      new Position(range.start.line, range.start.column + newText.length),
+    this.cursor = this.cursor.moveTo(
+      new Position(range.start.line, range.start.column + text.length),
     );
-    this.cursor = newCursor;
   }
 
   deleteSelection(): void {
