@@ -3,7 +3,7 @@ import { LineIndex } from "@/core/lines/lineIndex";
 import type { Position } from "@/core/position/position";
 import { Range } from "@core/position/range";
 
-interface IDocument {
+export interface IDocument {
   getText(): string;
   getLineCount(): number;
   insert(position: Position, text: string): void;

@@ -1,6 +1,6 @@
 import { Position } from "@core/position/position";
 
-interface ILineIndex {
+export interface ILineIndex {
   getLineCount(): number;
   getLineStart(line: number): number;
   positionToOffset(position: Position): number;

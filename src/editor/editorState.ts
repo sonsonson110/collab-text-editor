@@ -2,15 +2,18 @@ import type { Document } from "@/core/document/document";
 import { Position } from "@/core/position/position";
 import { Cursor } from "@/editor/cursor/cursor";
 
-interface IEditorState {
+export interface IEditorState {
   setCursor(cursor: Cursor): void;
+  getCursor(): Cursor;
   insert(text: string): void;
   deleteSelection(): void;
+  getLineCount(): number;
+  getLineContent(line: number): string;
 }
 
 export class EditorState implements IEditorState {
-  document: Document;
-  cursor: Cursor;
+  private document: Document;
+  private cursor: Cursor;
 
   constructor(doc: Document, cursor: Cursor) {
     this.document = doc;
@@ -19,6 +22,10 @@ export class EditorState implements IEditorState {
 
   setCursor(cursor: Cursor): void {
     this.cursor = cursor;
+  }
+
+  getCursor(): Cursor {
+    return this.cursor;
   }
 
   // TODO: Handle multi-line selections and complex insertions
@@ -37,5 +44,13 @@ export class EditorState implements IEditorState {
     this.document.delete(range);
     // Move cursor to the start of the deleted range
     this.cursor = this.cursor.moveTo(range.start);
+  }
+
+  getLineCount(): number {
+    return this.document.getLineCount();
+  }
+
+  getLineContent(line: number): string {
+    return this.document.getLineContent(line);
   }
 }
