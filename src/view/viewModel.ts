@@ -26,7 +26,8 @@ export class ViewModel implements IViewModel {
   }
 
   getViewportStart(): number {
-    return this.startLine;
+    const maxPossibleStart = this.editor.getLineCount() - this.visibleLineCount;
+    return Math.min(this.startLine, maxPossibleStart);
   }
 
   getViewportEnd(): number {

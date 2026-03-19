@@ -1,12 +1,12 @@
 import type { Document } from "@/core/document/document";
-import { Position } from "@/core/position/position";
 import { Cursor } from "@/editor/cursor/cursor";
+import { Range } from "@core/position/range";
 
 export interface IEditorState {
   setCursor(cursor: Cursor): void;
   getCursor(): Cursor;
   insert(text: string): void;
-  deleteSelection(): void;
+  delete(): void;
   getLineCount(): number;
   getLineContent(line: number): string;
 }
@@ -32,14 +32,17 @@ export class EditorState implements IEditorState {
   insert(text: string): void {
     const range = this.cursor.toRange();
     this.document.replace(range, text);
-
-    // Move cursor to the end of the replaced text
-    this.cursor = this.cursor.moveTo(
-      new Position(range.start.line, range.start.column + text.length),
-    );
+    this.moveCursorAfterInsert(range, text);
   }
 
-  deleteSelection(): void {
+  private moveCursorAfterInsert(range: Range, text: string): void {
+    const startOffset = this.document.getOffsetAt(range.start);
+    const newOffset = startOffset + text.length;
+    const newPosition = this.document.getPositionAt(newOffset);
+    this.cursor = this.cursor.moveTo(newPosition);
+  }
+
+  delete(): void {
     const range = this.cursor.toRange();
     this.document.delete(range);
     // Move cursor to the start of the deleted range
