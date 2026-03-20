@@ -28,7 +28,6 @@ export class EditorState implements IEditorState {
     return this.cursor;
   }
 
-  // TODO: Handle multi-line selections and complex insertions
   insert(text: string): void {
     const range = this.cursor.toRange();
     this.document.replace(range, text);
