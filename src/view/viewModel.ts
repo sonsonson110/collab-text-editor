@@ -26,8 +26,9 @@ export class ViewModel implements IViewModel {
   }
 
   getViewportStart(): number {
-    const maxPossibleStart = this.editor.getLineCount() - this.visibleLineCount;
-    return Math.min(this.startLine, maxPossibleStart);
+    const possibleStart = this.editor.getLineCount() - this.visibleLineCount;
+    const safePossibleStart = Math.max(possibleStart, 0);
+    return Math.min(this.startLine, safePossibleStart);
   }
 
   getViewportEnd(): number {
@@ -68,8 +69,9 @@ export class ViewModel implements IViewModel {
   }
 
   scrollDown(lines: number = 1): void {
-    const maxStart = this.editor.getLineCount() - this.visibleLineCount;
-    this.startLine = Math.min(this.startLine + lines, maxStart);
+    const newStart = this.editor.getLineCount() - this.visibleLineCount;
+    const safeNewStart = Math.max(newStart, 0);
+    this.startLine = Math.min(this.startLine + lines, safeNewStart);
   }
 
   scrollUp(lines: number = 1): void {
