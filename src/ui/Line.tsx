@@ -1,7 +1,4 @@
-type ViewLine = {
-  lineNumber: number;
-  content: string;
-};
+import type { ViewLine } from "@/view/types";
 
 export function Line({ line }: { line: ViewLine }) {
   return (
