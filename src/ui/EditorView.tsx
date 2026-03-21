@@ -31,11 +31,9 @@ export function EditorView({ viewModel, editor }: Props) {
 
     update();
 
-    // temporary: poll
-    const interval = setInterval(update, 100);
-
-    return () => clearInterval(interval);
-  }, [viewModel]);
+    const unsubscribe = editor.subscribe(update);
+    return unsubscribe;
+  }, [viewModel, editor]);
 
   return (
     <div className="editor" tabIndex={0} onKeyDown={handleKeyDown}>

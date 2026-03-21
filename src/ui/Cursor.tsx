@@ -1,3 +1,6 @@
+const LINE_HEIGHT = 20;
+const CHAR_WIDTH = 8;
+
 export function Cursor({
   position,
 }: {
@@ -7,8 +10,8 @@ export function Cursor({
     <div
       className="cursor w-px h-5 bg-black absolute"
       style={{
-        top: position.line * 20,
-        left: position.column * 8,
+        top: position.line * LINE_HEIGHT,
+        left: position.column * CHAR_WIDTH,
       }}
     />
   );

@@ -9,15 +9,28 @@ export interface IEditorState {
   getLineCount(): number;
   getLineContent(line: number): string;
   execute(command: Command): void;
+  subscribe(listener: () => void): () => void;
 }
 
 export class EditorState implements IEditorState {
   private document: Document;
   private cursor: Cursor;
+  private listeners = new Set<() => void>();
 
   constructor(doc: Document, cursor: Cursor) {
     this.document = doc;
     this.cursor = cursor;
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private notifyListeners(): void {
+    this.listeners.forEach((listener) => listener());
   }
 
   private setCursor(cursor: Cursor): void {
@@ -143,5 +156,6 @@ export class EditorState implements IEditorState {
         this.expandSelection(command.position);
         break;
     }
+    this.notifyListeners();
   }
 }

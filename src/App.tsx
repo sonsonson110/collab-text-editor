@@ -11,7 +11,7 @@ function App() {
   );
   const cursor = new Cursor(new Position(0, 1));
   const editor = new EditorState(doc, cursor);
-  const viewModel = new ViewModel(editor, 0, 5);
+  const viewModel = new ViewModel(editor, 0, 10);
 
   return <EditorView viewModel={viewModel} editor={editor} />;
 }
