@@ -91,7 +91,7 @@ export class EditorState implements IEditorState {
       return;
     }
 
-    const current = cursor.getCurrent();
+    const current = cursor.active;
     const offset = this.document.getOffsetAt(current);
 
     if (direction === "left" && offset > 0) {

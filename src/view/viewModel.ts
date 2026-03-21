@@ -54,7 +54,7 @@ export class ViewModel implements IViewModel {
   }
 
   isCursorVisible(): boolean {
-    const cursorPos = this.editor.getCursor().getCurrent();
+    const cursorPos = this.editor.getCursor().active;
     const viewportStart = this.getViewportStart();
     const viewportEnd = this.getViewportEnd();
 
@@ -65,7 +65,7 @@ export class ViewModel implements IViewModel {
     if (!this.isCursorVisible()) {
       return null;
     }
-    const cursorPos = this.editor.getCursor().getCurrent();
+    const cursorPos = this.editor.getCursor().active;
     return {
       line: cursorPos.line - this.getViewportStart(),
       column: cursorPos.column,

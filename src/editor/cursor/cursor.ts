@@ -5,7 +5,6 @@ interface ICursor {
   isCollapsed(): boolean;
   getStart(): Position;
   getEnd(): Position;
-  getCurrent(): Position;
   toRange(): Range;
   moveTo(position: Position): Cursor;
   setActive(position: Position): Cursor;
@@ -34,11 +33,6 @@ export class Cursor implements ICursor {
 
   getEnd(): Position {
     return this.anchor.isAfter(this.active) ? this.anchor : this.active;
-  }
-
-  // Returns the current position of the cursor (active if there's a selection, otherwise anchor)
-  getCurrent(): Position {
-    return this.active ?? this.anchor;
   }
 
   toRange(): Range {
