@@ -1,11 +1,9 @@
-// src/ui/EditorView.tsx
-import { useEffect, useState } from "react";
-import type { ViewModel } from "@/view/viewModel";
-import { Line } from "./Line";
-import { Cursor as CursorComponent } from "./Cursor";
 import type { IEditorState } from "@/editor/editorState";
-import { Position } from "@/core/position/position";
-import { Cursor } from "@/editor/cursor/cursor";
+import { mapKeyboardEvent } from "@/ui/inputHandler";
+import type { ViewModel } from "@/view/viewModel";
+import { useEffect, useState, type KeyboardEventHandler } from "react";
+import { Cursor as CursorComponent } from "./Cursor";
+import { Line } from "./Line";
 
 interface Props {
   viewModel: ViewModel;
@@ -15,6 +13,14 @@ interface Props {
 export function EditorView({ viewModel, editor }: Props) {
   const [lines, setLines] = useState(viewModel.getVisibleLines());
   const [cursor, setCursor] = useState(viewModel.getCursorViewportPosition());
+
+  const handleKeyDown: KeyboardEventHandler<HTMLDivElement> = (e) => {
+    const command = mapKeyboardEvent(e);
+    if (command) {
+      editor.execute(command);
+      e.preventDefault();
+    }
+  };
 
   // simple re-sync
   useEffect(() => {
@@ -32,34 +38,12 @@ export function EditorView({ viewModel, editor }: Props) {
   }, [viewModel]);
 
   return (
-    <div className="editor">
+    <div className="editor" tabIndex={0} onKeyDown={handleKeyDown}>
       {lines.map((line) => (
         <Line key={line.lineNumber} line={line} />
       ))}
 
       {cursor && <CursorComponent position={cursor} />}
-      <div className="flex gap-1">
-        <button className="border" onClick={() => viewModel.scrollUp()}>
-          scroll up
-        </button>
-        <button className="border" onClick={() => viewModel.scrollDown()}>
-          scroll down
-        </button>
-        <button className="border" onClick={() => editor.insert("Hello")}>
-          Insert text
-        </button>
-        <button
-          className="border"
-          onClick={() => {
-            editor.setCursor(
-              new Cursor(new Position(0, 0), new Position(0, 5)),
-            );
-            editor.delete();
-          }}
-        >
-          Delete text
-        </button>
-      </div>
     </div>
   );
 }

@@ -2,12 +2,22 @@
 
 :root {
   --line-height: 20px;
+  --text-color: white;
+  --background-color: black;
 }
 
 .editor {
   position: relative;
   font-family: monospace;
+  color: var(--text-color);
+  background-color: var(--background-color);
   line-height: var(--line-height);
+  height: 100vh;
+  overflow: auto;
+}
+
+.editor:focus-visible {
+  outline: none;
 }
 
 .line {
@@ -17,4 +27,5 @@
 
 .cursor {
   pointer-events: none;
+  background-color: var(--text-color)  ;
 }

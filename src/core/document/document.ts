@@ -5,6 +5,7 @@ import { Range } from "@core/position/range";
 
 export interface IDocument {
   getText(): string;
+  getLength(): number;
   getLineCount(): number;
   insert(position: Position, text: string): void;
   delete(range: Range): void;
@@ -28,6 +29,10 @@ export class Document implements IDocument {
 
   getText(): string {
     return this.text;
+  }
+
+  getLength(): number {
+    return this.text.length;
   }
 
   getLineCount(): number {

@@ -11,6 +11,7 @@ interface ICursor {
   setActive(position: Position): Cursor;
   collapseToStart(): Cursor;
   collapseToEnd(): Cursor;
+  isAtStart(): boolean;
 }
 
 export class Cursor implements ICursor {
@@ -58,5 +59,11 @@ export class Cursor implements ICursor {
 
   collapseToEnd(): Cursor {
     return new Cursor(this.getEnd());
+  }
+
+  isAtStart(): boolean {
+    return (
+      this.isCollapsed() && this.active.line === 0 && this.active.column === 0
+    );
   }
 }
