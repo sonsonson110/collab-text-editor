@@ -1,4 +1,4 @@
-import { Position } from "@core/position/position";
+import { Position } from "@/core/position/position";
 
 export interface ILineIndex {
   getLineCount(): number;

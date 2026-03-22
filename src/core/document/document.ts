@@ -1,7 +1,7 @@
 import type { Change } from "@/core/document/change";
 import { LineIndex } from "@/core/lines/lineIndex";
 import type { Position } from "@/core/position/position";
-import { Range } from "@core/position/range";
+import { Range } from "@/core/position/range";
 
 export interface IDocument {
   getText(): string;
