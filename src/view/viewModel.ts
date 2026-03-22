@@ -2,13 +2,12 @@ import type { IEditorState } from "@/editor/editorState";
 import type { ViewLine } from "./types";
 
 export interface IViewModel {
-  getViewportStart(): number;
-  getViewportEnd(): number;
   getVisibleLines(): ViewLine[];
   isCursorVisible(): boolean;
   getCursorViewportPosition(): { line: number; column: number } | null;
   scrollDown(lines?: number): void;
   scrollUp(lines?: number): void;
+  scrollToCursor(): void;
 }
 
 export class ViewModel implements IViewModel {
@@ -26,13 +25,14 @@ export class ViewModel implements IViewModel {
     this.visibleLineCount = visibleLineCount;
   }
 
-  getViewportStart(): number {
+  private getViewportStart(): number {
     const possibleStart = this.editor.getLineCount() - this.visibleLineCount;
     const safePossibleStart = Math.max(possibleStart, 0);
     return Math.min(this.startLine, safePossibleStart);
   }
 
-  getViewportEnd(): number {
+  // Does not include the end line, which is exclusive
+  private getViewportEnd(): number {
     return Math.min(
       this.startLine + this.visibleLineCount,
       this.editor.getLineCount(),
@@ -80,5 +80,17 @@ export class ViewModel implements IViewModel {
 
   scrollUp(lines: number = 1): void {
     this.startLine = Math.max(this.startLine - lines, 0);
+  }
+
+  scrollToCursor(): void {
+    const cursorPos = this.editor.getCursor().active;
+    const viewportStart = this.getViewportStart();
+    const viewportEnd = this.getViewportEnd();
+
+    if (cursorPos.line < viewportStart) {
+      this.startLine = cursorPos.line;
+    } else if (cursorPos.line >= viewportEnd) {
+      this.startLine = cursorPos.line - this.visibleLineCount + 1;
+    }
   }
 }

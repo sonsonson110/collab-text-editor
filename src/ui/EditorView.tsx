@@ -1,7 +1,12 @@
 import type { IEditorState } from "@/editor/editorState";
 import { mapKeyboardEvent } from "@/ui/inputHandler";
 import type { ViewModel } from "@/view/viewModel";
-import { useEffect, useState, type KeyboardEventHandler } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type KeyboardEventHandler,
+} from "react";
 import { Cursor as CursorComponent } from "./Cursor";
 import { Line } from "./Line";
 
@@ -22,21 +27,23 @@ export function EditorView({ viewModel, editor }: Props) {
     }
   };
 
-  // simple re-sync
+  const sync = useCallback(() => {
+    viewModel.scrollToCursor();
+    setLines(viewModel.getVisibleLines());
+    setCursor(viewModel.getCursorViewportPosition());
+  }, [viewModel]);
+
   useEffect(() => {
-    const update = () => {
-      setLines(viewModel.getVisibleLines());
-      setCursor(viewModel.getCursorViewportPosition());
-    };
-
-    update();
-
-    const unsubscribe = editor.subscribe(update);
-    return unsubscribe;
-  }, [viewModel, editor]);
+    sync();
+    return editor.subscribe(sync);
+  }, [editor, sync]);
 
   return (
-    <div className="editor" tabIndex={0} onKeyDown={handleKeyDown}>
+    <div
+      className="editor border border-white"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+    >
       {lines.map((line) => (
         <Line key={line.lineNumber} line={line} />
       ))}

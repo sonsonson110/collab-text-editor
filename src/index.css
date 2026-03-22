@@ -6,13 +6,15 @@
   --background-color: black;
 }
 
+html {
+  background-color: var(--background-color);
+}
+
 .editor {
   position: relative;
   font-family: monospace;
   color: var(--text-color);
-  background-color: var(--background-color);
   line-height: var(--line-height);
-  height: 100vh;
   overflow: auto;
 }
 
