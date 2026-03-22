@@ -2,7 +2,7 @@ import type { IDocument } from "@/core/document/document";
 import { Position } from "@/core/position/position";
 import type { Command } from "@/editor/commands";
 import { Cursor } from "@/editor/cursor/cursor";
-import { Range } from "@core/position/range";
+import { Range } from "@/core/position/range";
 
 export interface IEditorState {
   getCursor(): Cursor;
