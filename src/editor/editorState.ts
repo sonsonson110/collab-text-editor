@@ -1,5 +1,5 @@
-import type { Document } from "@/core/document/document";
-import type { Position } from "@/core/position/position";
+import type { IDocument } from "@/core/document/document";
+import { Position } from "@/core/position/position";
 import type { Command } from "@/editor/commands";
 import { Cursor } from "@/editor/cursor/cursor";
 import { Range } from "@core/position/range";
@@ -13,11 +13,11 @@ export interface IEditorState {
 }
 
 export class EditorState implements IEditorState {
-  private document: Document;
+  private document: IDocument;
   private cursor: Cursor;
   private listeners = new Set<() => void>();
 
-  constructor(doc: Document, cursor: Cursor) {
+  constructor(doc: IDocument, cursor: Cursor) {
     this.document = doc;
     this.cursor = cursor;
   }
@@ -92,7 +92,7 @@ export class EditorState implements IEditorState {
     this.cursor = this.cursor.moveTo(currentCursor.active);
   }
 
-  moveCursor(direction: "left" | "right"): void {
+  moveCursor(direction: "left" | "right" | "up" | "down"): void {
     const cursor = this.cursor;
 
     // collapse selection if exists
@@ -107,14 +107,46 @@ export class EditorState implements IEditorState {
     const current = cursor.active;
     const offset = this.document.getOffsetAt(current);
 
-    if (direction === "left" && offset > 0) {
-      const newPos = this.document.getPositionAt(offset - 1);
-      this.cursor = cursor.moveTo(newPos);
-    }
+    switch (direction) {
+      case "left":
+        if (offset > 0) {
+          const newPos = this.document.getPositionAt(offset - 1);
+          this.cursor = cursor.moveTo(newPos);
+        }
+        break;
 
-    if (direction === "right" && offset < this.document.getLength()) {
-      const newPos = this.document.getPositionAt(offset + 1);
-      this.cursor = cursor.moveTo(newPos);
+      case "right":
+        if (offset < this.document.getLength()) {
+          const newPos = this.document.getPositionAt(offset + 1);
+          this.cursor = cursor.moveTo(newPos);
+        }
+        break;
+
+      case "up": {
+        const currentLine = current.line;
+        if (currentLine > 0) {
+          const nextLineLength = this.document.getLineLength(currentLine - 1);
+          const newPos = new Position(
+            currentLine - 1,
+            Math.min(current.column, nextLineLength),
+          );
+          this.cursor = cursor.moveTo(newPos);
+        }
+        break;
+      }
+
+      case "down": {
+        const currentLine = current.line;
+        if (currentLine < this.document.getLineCount() - 1) {
+          const nextLineLength = this.document.getLineLength(currentLine + 1);
+          const newPos = new Position(
+            currentLine + 1,
+            Math.min(current.column, nextLineLength),
+          );
+          this.cursor = cursor.moveTo(newPos);
+        }
+        break;
+      }
     }
   }
 

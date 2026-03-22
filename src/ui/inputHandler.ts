@@ -8,6 +8,9 @@ export function mapKeyboardEvent(e: React.KeyboardEvent): Command | null {
   }
 
   switch (e.key) {
+    case "Enter":
+      return { type: "insert_text", text: "\n" };
+
     case "Backspace":
       return { type: "delete_backward" };
 
@@ -19,6 +22,12 @@ export function mapKeyboardEvent(e: React.KeyboardEvent): Command | null {
 
     case "ArrowRight":
       return { type: "move_cursor", direction: "right" };
+
+    case "ArrowUp":
+      return { type: "move_cursor", direction: "up" };
+
+    case "ArrowDown":
+      return { type: "move_cursor", direction: "down" };
   }
 
   return null;
