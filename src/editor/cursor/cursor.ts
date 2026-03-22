@@ -1,5 +1,5 @@
 import type { Position } from "@/core/position/position";
-import { Range } from "@core/position/range";
+import { Range } from "@/core/position/range";
 
 interface ICursor {
   isCollapsed(): boolean;
