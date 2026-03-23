@@ -34,11 +34,51 @@ function makeStub({
   };
 }
 
-function makeVM(stub: IEditorState, startLine = 0, visibleCount = 5): ViewModel {
+function makeVM(
+  stub: IEditorState,
+  startLine = 0,
+  visibleCount = 5,
+): ViewModel {
   return new ViewModel(stub, startLine, visibleCount);
 }
 
 describe("ViewModel", () => {
+  // -------------------------------------------------------------------------
+  // getViewportStart
+  // -------------------------------------------------------------------------
+  describe("getViewportStart", () => {
+    it("returns startLine when document is long enough", () => {
+      const vm = makeVM(makeStub({ lineCount: 100 }), 10, 20);
+      expect(vm.getViewportStart()).toBe(10);
+    });
+
+    it("clamps to lineCount - visibleCount when startLine is too large", () => {
+      const vm = makeVM(makeStub({ lineCount: 30 }), 20, 15);
+      // lineCount - visibleCount = 30 - 15 = 15
+      expect(vm.getViewportStart()).toBe(15);
+    });
+
+    it("does not return negative start even if lineCount < visibleCount", () => {
+      const vm = makeVM(makeStub({ lineCount: 5 }), 0, 10);
+      expect(vm.getViewportStart()).toBe(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // getViewportEnd
+  // -------------------------------------------------------------------------
+  describe("getViewportEnd", () => {
+    it("returns startLine + visibleCount when document is long enough", () => {
+      const vm = makeVM(makeStub({ lineCount: 100 }), 10, 20);
+      expect(vm.getViewportEnd()).toBe(30);
+    });
+
+    it("clamps to lineCount when startLine + visibleCount exceeds lineCount", () => {
+      const vm = makeVM(makeStub({ lineCount: 25 }), 20, 10);
+      expect(vm.getViewportEnd()).toBe(25);
+    });
+  });
+
   // -------------------------------------------------------------------------
   // getVisibleLines
   // -------------------------------------------------------------------------
@@ -173,7 +213,11 @@ describe("ViewModel", () => {
     });
 
     it("returns relative line 0 when cursor is on first visible line", () => {
-      const vm = makeVM(makeStub({ lineCount: 10, cursorLine: 0, cursorCol: 3 }), 0, 5);
+      const vm = makeVM(
+        makeStub({ lineCount: 10, cursorLine: 0, cursorCol: 3 }),
+        0,
+        5,
+      );
       const pos = vm.getCursorViewportPosition();
       expect(pos).not.toBeNull();
       expect(pos!.line).toBe(0);
@@ -182,7 +226,11 @@ describe("ViewModel", () => {
 
     it("returns correct relative line when viewport is scrolled", () => {
       // cursor on document line 7, viewport starts at 5 → relative line 2
-      const vm = makeVM(makeStub({ lineCount: 20, cursorLine: 7, cursorCol: 4 }), 5, 5);
+      const vm = makeVM(
+        makeStub({ lineCount: 20, cursorLine: 7, cursorCol: 4 }),
+        5,
+        5,
+      );
       const pos = vm.getCursorViewportPosition();
       expect(pos).not.toBeNull();
       expect(pos!.line).toBe(2);

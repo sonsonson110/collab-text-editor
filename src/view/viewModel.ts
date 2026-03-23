@@ -3,12 +3,24 @@ import type { ViewLine } from "./types";
 import type { Command } from "@/editor/commands";
 
 export interface IViewModel {
+  // Viewport queries
+  getViewportStart(): number;
+  getLineCount(): number;
+  getLineContent(line: number): string;
+
+  // Visible content
   getVisibleLines(): ViewLine[];
+
+  // Cursor
   isCursorVisible(): boolean;
   getCursorViewportPosition(): { line: number; column: number } | null;
+
+  // Scroll
   scrollDown(lines?: number): void;
   scrollUp(lines?: number): void;
   scrollToCursor(): void;
+
+  // Reactive bridge
   subscribe(callback: () => void): () => void;
   execute(command: Command): void;
 }
@@ -28,14 +40,22 @@ export class ViewModel implements IViewModel {
     this.visibleLineCount = visibleLineCount;
   }
 
-  private getViewportStart(): number {
+  getLineCount(): number {
+    return this.editor.getLineCount();
+  }
+
+  getLineContent(line: number): string {
+    return this.editor.getLineContent(line);
+  }
+
+  getViewportStart(): number {
     const possibleStart = this.editor.getLineCount() - this.visibleLineCount;
     const safePossibleStart = Math.max(possibleStart, 0);
     return Math.min(this.startLine, safePossibleStart);
   }
 
   // Does not include the end line, which is exclusive
-  private getViewportEnd(): number {
+  getViewportEnd(): number {
     return Math.min(
       this.startLine + this.visibleLineCount,
       this.editor.getLineCount(),

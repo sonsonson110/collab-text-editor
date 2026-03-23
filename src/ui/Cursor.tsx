@@ -1,4 +1,4 @@
-const LINE_HEIGHT = 20;
+import { LINE_HEIGHT } from "@/constants";
 
 export function Cursor({
   position,
