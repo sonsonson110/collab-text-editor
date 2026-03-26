@@ -11,6 +11,7 @@ html {
 }
 
 .editor {
+  display: flex;
   position: relative;
   font-family: monospace;
   color: var(--text-color);
@@ -30,4 +31,28 @@ html {
 .cursor {
   pointer-events: none;
   background-color: var(--text-color);
+}
+
+.gutter {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--background-color);
+  color: #888;
+  text-align: right;
+  padding-right: 1ch;
+  user-select: none;
+  border-right: 1px solid #444;
+}
+
+.gutter-line {
+  line-height: var(--line-height);
+  white-space: pre;
+  cursor: pointer;
+}
+
+.editor-content {
+  flex-grow: 1;
+  position: relative;
+  overflow: hidden;
 }

@@ -34,6 +34,7 @@ export function EditorView({ viewModel }: Props) {
   );
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   // Calculate char width once and store it, to avoid expensive calculations on every render
   const charWidthRef = useRef<number>(null);
 
@@ -54,7 +55,7 @@ export function EditorView({ viewModel }: Props) {
 
   const resolvePosition = useCallback(
     (clientX: number, clientY: number): Position | null => {
-      const container = containerRef.current;
+      const container = contentRef.current;
       if (!container) {
         return null;
       }
@@ -210,6 +211,28 @@ export function EditorView({ viewModel }: Props) {
     e.preventDefault();
   };
 
+  const handleLineNumberMouseDown = useCallback(
+    (e: React.MouseEvent, line: number) => {
+      e.preventDefault(); // Prevent text selection
+      const lineLength = viewModel.getLineContent(line).length;
+
+      // Move anchor to start of line
+      viewModel.execute({
+        type: "move_cursor_to",
+        position: new Position(line, 0),
+      });
+
+      // Move active Selection to end of line
+      viewModel.execute({
+        type: "select_to",
+        position: new Position(line, lineLength),
+      });
+
+      containerRef.current?.focus();
+    },
+    [viewModel],
+  );
+
   const updateView = useCallback(() => {
     const nextLines = viewModel.getVisibleLines();
     const nextCursor = viewModel.getCursorViewportPosition();
@@ -273,24 +296,45 @@ export function EditorView({ viewModel }: Props) {
     return viewModel.subscribe(sync);
   }, [viewModel, sync]);
 
+  const lineCount = viewModel.getLineCount();
+  const gutterDigits = Math.max(1, Math.floor(Math.log10(lineCount)) + 1);
+  const gutterWidthCh = gutterDigits + 2;
+
   return (
     <div
       ref={containerRef}
-      className="editor border border-white"
+      className="editor"
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      onMouseDown={handleMouseDown}
       onWheel={handleWheel}
     >
-      <Selection rects={selectionRects} />
+      <div className="gutter" style={{ width: `${gutterWidthCh}ch` }}>
+        {lines.map((line) => (
+          <div
+            key={line.lineNumber}
+            className="gutter-line"
+            onMouseDown={(e) => handleLineNumberMouseDown(e, line.lineNumber)}
+          >
+            {line.lineNumber + 1}
+          </div>
+        ))}
+      </div>
 
-      {lines.map((line) => (
-        <Line key={line.lineNumber} line={line} />
-      ))}
+      <div
+        className="editor-content"
+        ref={contentRef}
+        onMouseDown={handleMouseDown}
+      >
+        <Selection rects={selectionRects} />
 
-      {cursor && viewModel.isCursorVisible() && (
-        <CursorComponent position={cursor} />
-      )}
+        {lines.map((line) => (
+          <Line key={line.lineNumber} line={line} />
+        ))}
+
+        {cursor && viewModel.isCursorVisible() && (
+          <CursorComponent position={cursor} />
+        )}
+      </div>
     </div>
   );
 }

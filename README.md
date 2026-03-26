@@ -41,9 +41,9 @@ Live demo: <https://educational-text-editor.web.app/>
 
 ## Line numbers
 
-- [ ] Gutter renders the line number for each visible line
-- [ ] Gutter width adjusts when line count exceeds one digit boundary (9→10, 99→100)
-- [ ] Clicking a line number selects the entire line
+- [x] Gutter renders the line number for each visible line
+- [x] Gutter width adjusts when line count exceeds one digit boundary (9→10, 99→100)
+- [x] Clicking a line number selects the entire line
 
 ---
 
