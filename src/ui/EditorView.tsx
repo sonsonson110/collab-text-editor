@@ -29,6 +29,7 @@ export function EditorView({ viewModel }: Props) {
       viewModel.getCursorViewportPosition() ?? { line: 0, column: 0 },
       (vpLine) =>
         viewModel.getLineContent(viewModel.getViewportStart() + vpLine).length,
+      viewModel.getVisibleLines().length,
     ),
   );
 
@@ -39,6 +40,12 @@ export function EditorView({ viewModel }: Props) {
   const isDraggingRef = useRef(false);
   const didMoveRef = useRef(false);
   const scrollAccumulatorRef = useRef(0);
+
+  const lastMousePosRef = useRef<{ clientX: number; clientY: number } | null>(
+    null,
+  );
+  const scrollRafRef = useRef<number | null>(null);
+  const lastScrollTimeRef = useRef<number>(0);
 
   // ---------------------------------------------------------------------------
   // Coordinate helper
@@ -88,6 +95,51 @@ export function EditorView({ viewModel }: Props) {
     }
   };
 
+  const autoScroll = useCallback(
+    (time: number) => {
+      if (!isDraggingRef.current || !lastMousePosRef.current) {
+        return;
+      }
+      scrollRafRef.current = requestAnimationFrame(autoScroll);
+
+      // Throttle to approx 20fps for smooth predictable drag-scrolling
+      if (time - lastScrollTimeRef.current < 50) {
+        return;
+      }
+
+      const { clientX, clientY } = lastMousePosRef.current;
+      const container = containerRef.current;
+      if (!container) {
+        return;
+      }
+
+      const rect = container.getBoundingClientRect();
+      const relativeY = clientY - rect.top;
+
+      const MARGIN = 5; // px
+      let explicitScroll = false;
+
+      // Explicit scroll only when inside the container margins
+      if (relativeY >= 0 && relativeY < MARGIN) {
+        viewModel.scrollUp(1);
+        explicitScroll = true;
+      } else if (relativeY <= rect.height && relativeY > rect.height - MARGIN) {
+        viewModel.scrollDown(1);
+        explicitScroll = true;
+      }
+
+      // Trigger select_to if we explicitly scrolled OR if we are outside the container
+      if (explicitScroll || relativeY < 0 || relativeY > rect.height) {
+        lastScrollTimeRef.current = time;
+        const movePosition = resolvePosition(clientX, clientY);
+        if (movePosition) {
+          viewModel.execute({ type: "select_to", position: movePosition });
+        }
+      }
+    },
+    [resolvePosition, viewModel],
+  );
+
   // ---------------------------------------------------------------------------
   // Mouse drag → text selection
   //
@@ -99,7 +151,6 @@ export function EditorView({ viewModel }: Props) {
   // mousemove and mouseup are attached to window so the drag keeps working
   // even when the pointer leaves the editor div.
   // ---------------------------------------------------------------------------
-
   const handleMouseDown: MouseEventHandler<HTMLDivElement> = (e) => {
     // Only handle primary button (left click)
     if (e.button !== 0) {
@@ -116,11 +167,19 @@ export function EditorView({ viewModel }: Props) {
 
     isDraggingRef.current = true;
     didMoveRef.current = false;
+    lastMousePosRef.current = { clientX: e.clientX, clientY: e.clientY };
+    lastScrollTimeRef.current = performance.now();
+    scrollRafRef.current = requestAnimationFrame(autoScroll);
 
     const handleWindowMouseMove = (moveEvent: MouseEvent) => {
       if (!isDraggingRef.current) {
         return;
       }
+
+      lastMousePosRef.current = {
+        clientX: moveEvent.clientX,
+        clientY: moveEvent.clientY,
+      };
 
       const movePosition = resolvePosition(
         moveEvent.clientX,
@@ -136,6 +195,9 @@ export function EditorView({ viewModel }: Props) {
 
     const handleWindowMouseUp = () => {
       isDraggingRef.current = false;
+      if (scrollRafRef.current !== null) {
+        cancelAnimationFrame(scrollRafRef.current);
+      }
       window.removeEventListener("mousemove", handleWindowMouseMove);
       window.removeEventListener("mouseup", handleWindowMouseUp);
     };
@@ -163,6 +225,7 @@ export function EditorView({ viewModel }: Props) {
             anchorVp,
             activeVp,
             (vpLine) => viewModel.getLineContent(vpStart + vpLine).length,
+            nextLines.length,
           )
         : [];
     setLines(nextLines);
@@ -178,7 +241,7 @@ export function EditorView({ viewModel }: Props) {
       // which feels much nicer than jumping by Math.trunc(53/20) = 2 lines.
       const PIXELS_PER_LINE = 50;
       const delta = Math.abs(e.deltaY);
-      const scrollDirection = e.deltaY > 0 ? 'down' : 'up';
+      const scrollDirection = e.deltaY > 0 ? "down" : "up";
       scrollAccumulatorRef.current +=
         e.deltaMode === 1 ? delta * PIXELS_PER_LINE : delta;
 
@@ -186,7 +249,7 @@ export function EditorView({ viewModel }: Props) {
       const lines = Math.trunc(scrollAccumulatorRef.current / PIXELS_PER_LINE);
 
       if (lines !== 0) {
-        if (scrollDirection === 'down') {
+        if (scrollDirection === "down") {
           viewModel.scrollDown(lines);
         } else {
           viewModel.scrollUp(lines);
@@ -225,7 +288,9 @@ export function EditorView({ viewModel }: Props) {
         <Line key={line.lineNumber} line={line} />
       ))}
 
-      {cursor && <CursorComponent position={cursor} />}
+      {cursor && viewModel.isCursorVisible() && (
+        <CursorComponent position={cursor} />
+      )}
     </div>
   );
 }

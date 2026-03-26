@@ -207,9 +207,11 @@ describe("ViewModel", () => {
   // -------------------------------------------------------------------------
 
   describe("getCursorViewportPosition", () => {
-    it("returns null when cursor is not visible", () => {
+    it("returns unclipped relative line when cursor is not visible", () => {
       const vm = makeVM(makeStub({ lineCount: 10, cursorLine: 9 }), 0, 5);
-      expect(vm.getCursorViewportPosition()).toBeNull();
+      const pos = vm.getCursorViewportPosition();
+      expect(pos.line).toBe(9);
+      expect(pos.column).toBe(0);
     });
 
     it("returns relative line 0 when cursor is on first visible line", () => {
@@ -250,9 +252,11 @@ describe("ViewModel", () => {
   // -------------------------------------------------------------------------
 
   describe("getAnchorViewportPosition", () => {
-    it("returns null when anchor is not visible", () => {
+    it("returns unclipped relative line when anchor is not visible", () => {
       const vm = makeVM(makeStub({ lineCount: 10, cursorLine: 9 }), 0, 5);
-      expect(vm.getAnchorViewportPosition()).toBeNull();
+      const pos = vm.getAnchorViewportPosition();
+      expect(pos.line).toBe(9);
+      expect(pos.column).toBe(0);
     });
 
     it("returns relative line 0 when anchor is on first visible line", () => {

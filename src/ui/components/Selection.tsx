@@ -64,6 +64,7 @@ export function buildSelectionRects(
   anchor: { line: number; column: number },
   active: { line: number; column: number },
   getLineLength: (viewportLine: number) => number,
+  visibleLineCount: number,
 ): SelectionRect[] {
   // Normalise so startPos is always the earlier position
   const startPos =
@@ -74,6 +75,9 @@ export function buildSelectionRects(
   const endPos = startPos === anchor ? active : anchor;
 
   if (startPos.line === endPos.line) {
+    if (startPos.line < 0 || startPos.line >= visibleLineCount) {
+      return [];
+    }
     // Single-line selection
     if (startPos.column === endPos.column) {
       return []; // collapsed
@@ -89,28 +93,30 @@ export function buildSelectionRects(
 
   const rects: SelectionRect[] = [];
 
-  // First partial line
-  rects.push({
-    line: startPos.line,
-    startCol: startPos.column,
-    endCol: getLineLength(startPos.line) + 1, // +1 to cover the newline glyph visually
-  });
+  // Identify visible range
+  const firstVisible = Math.max(0, startPos.line);
+  const lastVisible = Math.min(visibleLineCount - 1, endPos.line);
 
-  // Full middle lines
-  for (let l = startPos.line + 1; l < endPos.line; l++) {
+  for (let l = firstVisible; l <= lastVisible; l++) {
+    let startCol = 0;
+    let endCol = getLineLength(l) + 1; // +1 to cover newline glyph visually
+
+    if (l === startPos.line) {
+      startCol = startPos.column;
+    }
+    if (l === endPos.line) {
+      endCol = endPos.column;
+    }
+
+    // Don't render empty rects for the last line if selection ends at column 0
+    if (l === endPos.line && endCol === 0) {
+      continue;
+    }
+
     rects.push({
       line: l,
-      startCol: 0,
-      endCol: getLineLength(l) + 1,
-    });
-  }
-
-  // Last partial line
-  if (endPos.column > 0) {
-    rects.push({
-      line: endPos.line,
-      startCol: 0,
-      endCol: endPos.column,
+      startCol,
+      endCol,
     });
   }
 
