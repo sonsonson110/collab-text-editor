@@ -10,6 +10,8 @@ export interface IViewModel {
 
   // Visible content
   getVisibleLines(): ViewLine[];
+  getVisibleLineCount(): number;
+  setVisibleLineCount(count: number): void;
 
   // Cursor / selection
   isCursorVisible(): boolean;
@@ -62,6 +64,17 @@ export class ViewModel implements IViewModel {
       this.startLine + this.visibleLineCount,
       this.editor.getLineCount(),
     );
+  }
+
+  getVisibleLineCount(): number {
+    return this.visibleLineCount;
+  }
+
+  setVisibleLineCount(count: number): void {
+    this.visibleLineCount = Math.max(1, count);
+    // Clamp startLine so the viewport doesn't overshoot the document end
+    const maxStart = Math.max(this.editor.getLineCount() - this.visibleLineCount, 0);
+    this.startLine = Math.min(this.startLine, maxStart);
   }
 
   getVisibleLines(): ViewLine[] {
@@ -128,6 +141,7 @@ export class ViewModel implements IViewModel {
     } else if (cursorPos.line >= viewportEnd) {
       this.startLine = cursorPos.line - this.visibleLineCount + 1;
     }
+    // No-op when cursor is already visible
   }
 
   subscribe(callback: () => void): () => void {

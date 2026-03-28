@@ -371,4 +371,57 @@ describe("ViewModel", () => {
       expect(stub.execute).toHaveBeenCalledWith(cmd);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // getVisibleLineCount
+  // -------------------------------------------------------------------------
+
+  describe("getVisibleLineCount", () => {
+    it("returns the value passed at construction", () => {
+      const vm = makeVM(makeStub({ lineCount: 20 }), 0, 5);
+      expect(vm.getVisibleLineCount()).toBe(5);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // setVisibleLineCount
+  // -------------------------------------------------------------------------
+
+  describe("setVisibleLineCount", () => {
+    it("updates the visible line count", () => {
+      const vm = makeVM(makeStub({ lineCount: 20 }), 0, 5);
+      vm.setVisibleLineCount(10);
+      expect(vm.getVisibleLineCount()).toBe(10);
+    });
+
+    it("clamps count to at least 1", () => {
+      const vm = makeVM(makeStub({ lineCount: 20 }), 0, 5);
+      vm.setVisibleLineCount(0);
+      expect(vm.getVisibleLineCount()).toBe(1);
+      vm.setVisibleLineCount(-5);
+      expect(vm.getVisibleLineCount()).toBe(1);
+    });
+
+    it("clamps startLine when shrinking the viewport would overshoot the document", () => {
+      // 10 lines, viewport starts at 7, showing 3 lines (7,8,9)
+      const vm = makeVM(makeStub({ lineCount: 10 }), 7, 3);
+      // Grow viewport to 5 → max start = 10-5=5, so startLine clamps to 5
+      vm.setVisibleLineCount(5);
+      expect(vm.getVisibleLines()[0].lineNumber).toBe(5);
+    });
+
+    it("does not change startLine when growing the viewport with room", () => {
+      // 20 lines, start at 5, showing 5 lines
+      const vm = makeVM(makeStub({ lineCount: 20 }), 5, 5);
+      vm.setVisibleLineCount(10);
+      expect(vm.getVisibleLines()[0].lineNumber).toBe(5);
+    });
+
+    it("correctly shows more lines after growing the viewport", () => {
+      const vm = makeVM(makeStub({ lineCount: 20 }), 0, 5);
+      expect(vm.getVisibleLines()).toHaveLength(5);
+      vm.setVisibleLineCount(10);
+      expect(vm.getVisibleLines()).toHaveLength(10);
+    });
+  });
 });

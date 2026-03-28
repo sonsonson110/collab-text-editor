@@ -21,6 +21,7 @@ interface Props {
 }
 
 export function EditorView({ viewModel }: Props) {
+  const [ready, setReady] = useState(false);
   const [lines, setLines] = useState(viewModel.getVisibleLines());
   const [cursor, setCursor] = useState(viewModel.getCursorViewportPosition());
   const [selectionRects, setSelectionRects] = useState(
@@ -291,10 +292,44 @@ export function EditorView({ viewModel }: Props) {
     updateView();
   }, [viewModel, updateView]);
 
+  // -------------------------------------------------------------------------
+  // ResizeObserver — derive visibleLineCount from actual container height
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const height = entry.contentRect.height;
+        const newCount = Math.floor(height / LINE_HEIGHT);
+        if (newCount > 0 && newCount !== viewModel.getVisibleLineCount()) {
+          viewModel.setVisibleLineCount(newCount);
+          updateView();
+        }
+      }
+      // Mark ready after the first measurement
+      setReady(true);
+    });
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [viewModel, updateView]);
+
   useEffect(() => {
     sync();
     return viewModel.subscribe(sync);
   }, [viewModel, sync]);
+
+  if (!ready) {
+    return (
+      <div ref={containerRef} className="editor">
+        <span style={{ color: "#888", padding: "0.5em" }}>Loading…</span>
+      </div>
+    );
+  }
 
   const lineCount = viewModel.getLineCount();
   const gutterDigits = Math.max(1, Math.floor(Math.log10(lineCount)) + 1);

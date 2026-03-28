@@ -5,7 +5,7 @@ import { EditorState } from "@/editor/editorState";
 import { ViewModel } from "@/view/viewModel";
 import { EditorView } from "@/ui/EditorView";
 import React from "react";
-import { INITIAL_TEXT, VISIBLE_LINE_COUNT } from "@/constants";
+import { INITIAL_TEXT } from "@/constants";
 
 function App() {
   const viewModelRef = React.useRef<ViewModel | null>(null);
@@ -14,7 +14,8 @@ function App() {
     const doc = new Document(INITIAL_TEXT);
     const cursor = new Cursor(new Position(0, 0));
     const editorState = new EditorState(doc, cursor);
-    viewModelRef.current = new ViewModel(editorState, 0, VISIBLE_LINE_COUNT);
+    // visibleLineCount starts at 1; EditorView's ResizeObserver sets the real value
+    viewModelRef.current = new ViewModel(editorState, 0, 1);
   }
 
   return <EditorView viewModel={viewModelRef.current} />;

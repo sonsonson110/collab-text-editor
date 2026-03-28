@@ -1,6 +1,6 @@
 export const LINE_HEIGHT = 20;
 
-export const INITIAL_TEXT = `Lorem ipsum dolor sit amet, consectetuer adipiscing elit.
+export const INITIAL_TEXT = `Lorem ipsum dolor sit amet, consectetuer adipiscing elit Lorem ipsum dolor sit amet, consectetuer adipiscing elit Lorem ipsum dolor sit amet, consectetuer adipiscing elit.
 Aenean commodo ligula eget dolor.
 Aenean massa.
 Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus.
@@ -113,5 +113,3 @@ Aenean vulputate eleifend tellus.
 Aenean leo ligula, porttitor eu, consequat vitae, eleifend ac, enim.
 Aliquam lorem ante, dapibus in, viverra quis, feugiat a,
 `;
-
-export const VISIBLE_LINE_COUNT = 20;
