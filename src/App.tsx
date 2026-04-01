@@ -16,7 +16,7 @@ function EditorInstance() {
     const cursor = new Cursor(new Position(0, 0));
     const editorState = new EditorState(doc, cursor);
     // visibleLineCount starts at 1; EditorView's ResizeObserver sets the real value
-    viewModelRef.current = new ViewModel(editorState, 0, 1);
+    viewModelRef.current = new ViewModel(editorState);
   }
 
   return <EditorView viewModel={viewModelRef.current} />;

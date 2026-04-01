@@ -1,3 +1,4 @@
+import { LINE_HEIGHT } from "@/constants";
 import { Document } from "@/core/document/document";
 import { Position } from "@/core/position/position";
 import { Cursor } from "@/editor/cursor/cursor";
@@ -9,10 +10,10 @@ const rawText =
 const doc = new Document(rawText);
 const cursor = new Cursor(new Position(0, 0));
 const editor = new EditorState(doc, cursor);
-const viewModel = new ViewModel(editor, 0, 5);
+const viewModel = new ViewModel(editor);
 
 console.log("Initial visible lines:", viewModel.getVisibleLines());
-viewModel.scrollDown(2);
+viewModel.scrollBy(0, 2 * LINE_HEIGHT);
 console.log("After scrolling down 2 lines:", viewModel.getVisibleLines());
-viewModel.scrollUp(1);
+viewModel.scrollBy(0, -1 * LINE_HEIGHT);
 console.log("After scrolling up 1 line:", viewModel.getVisibleLines());

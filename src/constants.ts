@@ -408,11 +408,9 @@ export function EditorView({ viewModel }: Props) {
         className="editor-content"
         ref={contentRef}
         onMouseDown={handleMouseDown}
-      >
         <div
           style={{
-            position: "relative",
-            transform: translateX(calc(-${scrollX} * 1ch)),
+            transform: 'translateX(calc(-SCROLL_X * 1ch))',
           }}
         >
           <Selection rects={selectionRects} />

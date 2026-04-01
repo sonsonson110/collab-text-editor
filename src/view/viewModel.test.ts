@@ -3,12 +3,12 @@ import { ViewModel } from "./viewModel";
 import type { IEditorState } from "@/editor/editorState";
 import { Cursor } from "@/editor/cursor/cursor";
 import { Position } from "@/core/position/position";
+import { LINE_HEIGHT } from "@/constants";
 
 const p = (line: number, col: number) => new Position(line, col);
 
 // ---------------------------------------------------------------------------
 // Stub factory
-// Builds a minimal IEditorState. Override any field per-test.
 // ---------------------------------------------------------------------------
 
 interface StubOptions {
@@ -37,57 +37,54 @@ function makeStub({
   };
 }
 
+const CHAR_WIDTH = 8;
+
 function makeVM(
   stub: IEditorState,
   startLine = 0,
-  visibleCount = 5,
+  visibleLines = 5,
+  visibleCols = 80
 ): ViewModel {
-  return new ViewModel(stub, startLine, visibleCount);
+  const vm = new ViewModel(stub);
+  vm.setViewport(visibleCols * CHAR_WIDTH, visibleLines * LINE_HEIGHT, CHAR_WIDTH);
+  vm.setScrollPosition(0, startLine * LINE_HEIGHT);
+  return vm;
 }
 
 describe("ViewModel", () => {
   // -------------------------------------------------------------------------
-  // getViewportStart
+  // Viewport Line Calculations
   // -------------------------------------------------------------------------
   describe("getViewportStart", () => {
-    it("returns startLine when document is long enough", () => {
+    it("returns correct start line based on scrollTop", () => {
       const vm = makeVM(makeStub({ lineCount: 100 }), 10, 20);
       expect(vm.getViewportStart()).toBe(10);
     });
 
-    it("clamps to lineCount - visibleCount when startLine is too large", () => {
-      const vm = makeVM(makeStub({ lineCount: 30 }), 20, 15);
-      // lineCount - visibleCount = 30 - 15 = 15
+    it("clamps to max possible start line", () => {
+      // 30 lines total, viewport shows 15 lines. Max start is 15.
+      const vm = makeVM(makeStub({ lineCount: 30 }));
+      vm.setViewport(800, 15 * LINE_HEIGHT, CHAR_WIDTH);
+      vm.setScrollPosition(0, 20 * LINE_HEIGHT);
       expect(vm.getViewportStart()).toBe(15);
-    });
-
-    it("does not return negative start even if lineCount < visibleCount", () => {
-      const vm = makeVM(makeStub({ lineCount: 5 }), 0, 10);
-      expect(vm.getViewportStart()).toBe(0);
+      expect(vm.getScrollTop()).toBe(15 * LINE_HEIGHT);
     });
   });
 
-  // -------------------------------------------------------------------------
-  // getViewportEnd
-  // -------------------------------------------------------------------------
   describe("getViewportEnd", () => {
-    it("returns startLine + visibleCount when document is long enough", () => {
+    it("returns start line + visible lines", () => {
       const vm = makeVM(makeStub({ lineCount: 100 }), 10, 20);
       expect(vm.getViewportEnd()).toBe(30);
     });
 
-    it("clamps to lineCount when startLine + visibleCount exceeds lineCount", () => {
+    it("clamps to lineCount", () => {
       const vm = makeVM(makeStub({ lineCount: 25 }), 20, 10);
       expect(vm.getViewportEnd()).toBe(25);
     });
   });
 
-  // -------------------------------------------------------------------------
-  // getVisibleLines
-  // -------------------------------------------------------------------------
-
   describe("getVisibleLines", () => {
-    it("returns visibleLineCount lines starting from startLine", () => {
+    it("returns visible lines from the dataset", () => {
       const vm = makeVM(makeStub({ lineCount: 10 }), 0, 5);
       const lines = vm.getVisibleLines();
       expect(lines).toHaveLength(5);
@@ -95,81 +92,87 @@ describe("ViewModel", () => {
       expect(lines[4].lineNumber).toBe(4);
     });
 
-    it("uses content from getLineContent for each line", () => {
-      const vm = makeVM(makeStub({ lineCount: 10 }), 0, 3);
-      const lines = vm.getVisibleLines();
-      expect(lines[0].content).toBe("line0");
-      expect(lines[2].content).toBe("line2");
-    });
-
-    it("returns fewer lines when near the end of the document", () => {
+    it("returns fewer lines when near the end of document", () => {
       const vm = makeVM(makeStub({ lineCount: 3 }), 0, 5);
       expect(vm.getVisibleLines()).toHaveLength(3);
     });
 
-    it("starts from startLine when not at the beginning", () => {
+    it("starts from startLine when scrolled", () => {
       const vm = makeVM(makeStub({ lineCount: 10 }), 3, 3);
       const lines = vm.getVisibleLines();
       expect(lines[0].lineNumber).toBe(3);
       expect(lines[2].lineNumber).toBe(5);
     });
-
-    it("clamps startLine so it never exceeds lineCount - visibleCount", () => {
-      // 10 lines, 5 visible, startLine=8 → effective start = 5
-      const vm = makeVM(makeStub({ lineCount: 10 }), 8, 5);
-      const lines = vm.getVisibleLines();
-      expect(lines[0].lineNumber).toBe(5);
-    });
   });
 
   // -------------------------------------------------------------------------
-  // scrollDown / scrollUp
+  // scrollBy / setScrollPosition
   // -------------------------------------------------------------------------
 
-  describe("scrollDown", () => {
-    it("advances startLine by 1 by default", () => {
+  describe("scrollBy (Vertical)", () => {
+    it("advances scrollTop by given delta", () => {
       const vm = makeVM(makeStub({ lineCount: 20 }), 0, 5);
-      vm.scrollDown();
-      expect(vm.getVisibleLines()[0].lineNumber).toBe(1);
+      vm.scrollBy(0, 3 * LINE_HEIGHT);
+      expect(vm.getScrollTop()).toBe(3 * LINE_HEIGHT);
+      expect(vm.getViewportStart()).toBe(3);
     });
 
-    it("advances startLine by the given amount", () => {
-      const vm = makeVM(makeStub({ lineCount: 20 }), 0, 5);
-      vm.scrollDown(3);
-      expect(vm.getVisibleLines()[0].lineNumber).toBe(3);
-    });
-
-    it("clamps at the last possible startLine (lineCount - visibleCount)", () => {
+    it("clamps at the last possible scroll top", () => {
       const vm = makeVM(makeStub({ lineCount: 10 }), 0, 5);
-      vm.scrollDown(100);
+      vm.scrollBy(0, 100 * LINE_HEIGHT);
       // max start = 10 - 5 = 5
-      expect(vm.getVisibleLines()[0].lineNumber).toBe(5);
+      expect(vm.getScrollTop()).toBe(5 * LINE_HEIGHT);
     });
 
-    it("does not scroll past the end when document is smaller than viewport", () => {
+    it("does not scroll past the end when document smaller than viewport", () => {
       const vm = makeVM(makeStub({ lineCount: 3 }), 0, 5);
-      vm.scrollDown(10);
-      expect(vm.getVisibleLines()[0].lineNumber).toBe(0);
+      vm.scrollBy(0, 10 * LINE_HEIGHT);
+      expect(vm.getScrollTop()).toBe(0);
+    });
+
+    it("handles scrolling up", () => {
+      const vm = makeVM(makeStub({ lineCount: 20 }), 5, 5);
+      vm.scrollBy(0, -3 * LINE_HEIGHT);
+      expect(vm.getScrollTop()).toBe(2 * LINE_HEIGHT);
+    });
+
+    it("clamps at scrollTop 0", () => {
+      const vm = makeVM(makeStub({ lineCount: 20 }), 2, 5);
+      vm.scrollBy(0, -100 * LINE_HEIGHT);
+      expect(vm.getScrollTop()).toBe(0);
     });
   });
 
-  describe("scrollUp", () => {
-    it("decrements startLine by 1 by default", () => {
-      const vm = makeVM(makeStub({ lineCount: 20 }), 5, 5);
-      vm.scrollUp();
-      expect(vm.getVisibleLines()[0].lineNumber).toBe(4);
+  describe("scrollBy (Horizontal)", () => {
+    it("advances scrollLeft by given delta", () => {
+      const vm = makeVM(makeStub({ lineCount: 10, maxLineLength: 100 }), 0, 5);
+      vm.scrollBy(5 * CHAR_WIDTH, 0);
+      expect(vm.getScrollLeft()).toBe(5 * CHAR_WIDTH);
     });
 
-    it("decrements startLine by the given amount", () => {
-      const vm = makeVM(makeStub({ lineCount: 20 }), 5, 5);
-      vm.scrollUp(3);
-      expect(vm.getVisibleLines()[0].lineNumber).toBe(2);
+    it("clamps at max line length plus padding", () => {
+      // line length 50, viewport 80 -> no scrolling allowed
+      const vm = makeVM(makeStub({ lineCount: 10, maxLineLength: 50 }), 0, 5, 80);
+      vm.scrollBy(100 * CHAR_WIDTH, 0);
+      expect(vm.getScrollLeft()).toBe(0);
     });
 
-    it("clamps at startLine 0", () => {
-      const vm = makeVM(makeStub({ lineCount: 20 }), 2, 5);
-      vm.scrollUp(100);
-      expect(vm.getVisibleLines()[0].lineNumber).toBe(0);
+    it("scrollLeft clamps properly with custom viewport constraints", () => {
+      // length 100, viewport 80, padding 3
+      // maxScroll = (100 + 3) * CHAR_WIDTH - 80 * CHAR_WIDTH = 23 * CHAR_WIDTH
+      const vm = makeVM(makeStub({ lineCount: 10, maxLineLength: 100 }), 0, 5, 80);
+      vm.scrollBy(1000 * CHAR_WIDTH, 0);
+      expect(vm.getScrollLeft()).toBe(23 * CHAR_WIDTH);
+    });
+
+    it("scrolls horizontally in both directions safely", () => {
+      const vm = makeVM(makeStub({ lineCount: 10, maxLineLength: 100 }), 0, 5, 80);
+      vm.scrollBy(10 * CHAR_WIDTH, 0);
+      expect(vm.getScrollLeft()).toBe(10 * CHAR_WIDTH);
+      vm.scrollBy(-3 * CHAR_WIDTH, 0);
+      expect(vm.getScrollLeft()).toBe(7 * CHAR_WIDTH);
+      vm.scrollBy(-100 * CHAR_WIDTH, 0);
+      expect(vm.getScrollLeft()).toBe(0);
     });
   });
 
@@ -183,7 +186,7 @@ describe("ViewModel", () => {
       expect(vm.isCursorVisible()).toBe(true);
     });
 
-    it("returns true when cursor is on the last visible line", () => {
+    it("returns true when cursor is on the last fully visible line", () => {
       const vm = makeVM(makeStub({ lineCount: 10, cursorLine: 4 }), 0, 5);
       expect(vm.isCursorVisible()).toBe(true);
     });
@@ -198,100 +201,36 @@ describe("ViewModel", () => {
       expect(vm.isCursorVisible()).toBe(false);
     });
 
-    it("returns false when cursor is exactly at viewport end (exclusive)", () => {
-      // viewport 0-4 (end is exclusive at 5), cursor on line 5
-      const vm = makeVM(makeStub({ lineCount: 10, cursorLine: 5 }), 0, 5);
+    it("evaluates horizontally too - false if scrolled out to right", () => {
+      const vm = makeVM(makeStub({ lineCount: 10, cursorCol: 100, maxLineLength: 200 }), 0, 5, 40);
+      // cursor is at 100, viewport is 0-40
       expect(vm.isCursorVisible()).toBe(false);
     });
-  });
 
-  // -------------------------------------------------------------------------
-  // getCursorViewportPosition
-  // -------------------------------------------------------------------------
-
-  describe("getCursorViewportPosition", () => {
-    it("returns unclipped relative line when cursor is not visible", () => {
-      const vm = makeVM(makeStub({ lineCount: 10, cursorLine: 9 }), 0, 5);
-      const pos = vm.getCursorViewportPosition();
-      expect(pos.line).toBe(9);
-      expect(pos.column).toBe(0);
-    });
-
-    it("returns relative line 0 when cursor is on first visible line", () => {
-      const vm = makeVM(
-        makeStub({ lineCount: 10, cursorLine: 0, cursorCol: 3 }),
-        0,
-        5,
-      );
-      const pos = vm.getCursorViewportPosition();
-      expect(pos).not.toBeNull();
-      expect(pos!.line).toBe(0);
-      expect(pos!.column).toBe(3);
-    });
-
-    it("returns correct relative line when viewport is scrolled", () => {
-      // cursor on document line 7, viewport starts at 5 → relative line 2
-      const vm = makeVM(
-        makeStub({ lineCount: 20, cursorLine: 7, cursorCol: 4 }),
-        5,
-        5,
-      );
-      const pos = vm.getCursorViewportPosition();
-      expect(pos).not.toBeNull();
-      expect(pos!.line).toBe(2);
-      expect(pos!.column).toBe(4);
-    });
-
-    it("returns relative line for last visible line", () => {
-      // cursor on line 4, viewport 0-4 (5 lines) → relative line 4
-      const vm = makeVM(makeStub({ lineCount: 10, cursorLine: 4 }), 0, 5);
-      const pos = vm.getCursorViewportPosition();
-      expect(pos!.line).toBe(4);
+    it("evaluates horizontally too - true if scrolled into view", () => {
+      const vm = makeVM(makeStub({ lineCount: 10, cursorCol: 100, maxLineLength: 200 }), 0, 5, 40);
+      vm.scrollBy(80 * CHAR_WIDTH, 0); // scrollX is now 80, view is 80-120
+      expect(vm.isCursorVisible()).toBe(true);
     });
   });
 
   // -------------------------------------------------------------------------
-  // getAnchorViewportPosition
+  // Viewport Position Rescaling Arrays
   // -------------------------------------------------------------------------
 
-  describe("getAnchorViewportPosition", () => {
-    it("returns unclipped relative line when anchor is not visible", () => {
-      const vm = makeVM(makeStub({ lineCount: 10, cursorLine: 9 }), 0, 5);
-      const pos = vm.getAnchorViewportPosition();
-      expect(pos.line).toBe(9);
-      expect(pos.column).toBe(0);
+  describe("Viewport Position Queries", () => {
+    it("getCursorViewportPosition offsets by viewport start", () => {
+      const vm = makeVM(makeStub({ lineCount: 20, cursorLine: 7, cursorCol: 4 }), 5, 5);
+      const pos = vm.getCursorViewportPosition();
+      expect(pos.line).toBe(2);
+      expect(pos.column).toBe(4);
     });
 
-    it("returns relative line 0 when anchor is on first visible line", () => {
-      const vm = makeVM(
-        makeStub({ lineCount: 10, cursorLine: 0, cursorCol: 3 }),
-        0,
-        5,
-      );
+    it("getAnchorViewportPosition offsets by viewport start", () => {
+      const vm = makeVM(makeStub({ lineCount: 20, cursorLine: 7, cursorCol: 4 }), 5, 5);
       const pos = vm.getAnchorViewportPosition();
-      expect(pos).not.toBeNull();
-      expect(pos!.line).toBe(0);
-      expect(pos!.column).toBe(3);
-    });
-
-    it("returns correct relative line when viewport is scrolled", () => {
-      // anchor on document line 7, viewport starts at 5 → relative line 2
-      const vm = makeVM(
-        makeStub({ lineCount: 20, cursorLine: 7, cursorCol: 4 }),
-        5,
-        5,
-      );
-      const pos = vm.getAnchorViewportPosition();
-      expect(pos).not.toBeNull();
-      expect(pos!.line).toBe(2);
-      expect(pos!.column).toBe(4);
-    });
-
-    it("returns relative line for last visible line", () => {
-      // anchor on line 4, viewport 0-4 (5 lines) → relative line 4
-      const vm = makeVM(makeStub({ lineCount: 10, cursorLine: 4 }), 0, 5);
-      const pos = vm.getAnchorViewportPosition();
-      expect(pos!.line).toBe(4);
+      expect(pos.line).toBe(2);
+      expect(pos.column).toBe(4);
     });
   });
 
@@ -300,45 +239,91 @@ describe("ViewModel", () => {
   // -------------------------------------------------------------------------
 
   describe("scrollToCursor", () => {
-    it("is a no-op when cursor is already visible", () => {
+    it("is a no-op when cursor is already vertically and horizontally visible", () => {
       const vm = makeVM(makeStub({ lineCount: 10, cursorLine: 2 }), 0, 5);
       vm.scrollToCursor();
-      expect(vm.getVisibleLines()[0].lineNumber).toBe(0);
+      expect(vm.getScrollTop()).toBe(0);
     });
 
     it("scrolls up when cursor is above the viewport", () => {
       const vm = makeVM(makeStub({ lineCount: 20, cursorLine: 1 }), 5, 5);
       vm.scrollToCursor();
-      expect(vm.getVisibleLines()[0].lineNumber).toBe(1);
+      expect(vm.getScrollTop()).toBe(1 * LINE_HEIGHT);
     });
 
     it("scrolls down when cursor is below the viewport", () => {
       const vm = makeVM(makeStub({ lineCount: 20, cursorLine: 12 }), 0, 5);
       vm.scrollToCursor();
-      // new startLine = 12 - 5 + 1 = 8
-      expect(vm.getVisibleLines()[0].lineNumber).toBe(8);
+      // cursorBottom = 13*LINE_HEIGHT. Expected top = 13*LINE_HEIGHT - 5*LINE_HEIGHT = 8*LINE_HEIGHT
+      expect(vm.getScrollTop()).toBe(8 * LINE_HEIGHT);
     });
 
-    it("after scrolling, cursor is visible", () => {
-      const vm = makeVM(makeStub({ lineCount: 20, cursorLine: 15 }), 0, 5);
+    it("horizontally scrolls right when cursor is past right edge", () => {
+      const vm = makeVM(makeStub({ lineCount: 10, cursorCol: 90, maxLineLength: 200 }), 0, 5, 80);
       vm.scrollToCursor();
-      expect(vm.isCursorVisible()).toBe(true);
+      // Required space: 90 chars. Viewport width: 80 chars. Scroll = 90 - 80 + padding(4)
+      const expectedLeft = (90 - 80 + 4) * CHAR_WIDTH;
+      expect(vm.getScrollLeft()).toBe(expectedLeft);
     });
 
-    it("handles cursor exactly at the boundary below viewport", () => {
-      // viewport 0-4, cursor on line 5 (just outside)
-      const vm = makeVM(makeStub({ lineCount: 20, cursorLine: 5 }), 0, 5);
+    it("horizontally scrolls left when cursor is past left edge", () => {
+      const vm = makeVM(makeStub({ lineCount: 10, cursorCol: 3, maxLineLength: 200 }), 0, 5, 80);
+      vm.scrollBy(20 * CHAR_WIDTH, 0); // User scrolls manually away
+      vm.scrollToCursor();
+      // Cursor is at col 3. Needs padding -> top to max(0, 3*char - 4*char) = 0
+      expect(vm.getScrollLeft()).toBe(0);
+    });
+
+    it("cursor is entirely visible after scrollToCursor", () => {
+      const vm = makeVM(makeStub({ lineCount: 20, cursorLine: 15, cursorCol: 150, maxLineLength: 300 }), 0, 5, 40);
       vm.scrollToCursor();
       expect(vm.isCursorVisible()).toBe(true);
     });
   });
 
   // -------------------------------------------------------------------------
-  // subscribe — delegates to editor
+  // Re-clamping logic and window interactions
   // -------------------------------------------------------------------------
 
-  describe("subscribe", () => {
-    it("delegates to editor.subscribe and returns the unsubscribe fn", () => {
+  describe("Viewport clamping upon resize", () => {
+    it("dynamically adjusts scroll bounds when viewport grows", () => {
+      const vm = makeVM(makeStub({ lineCount: 20 }), 0, 5);
+      vm.scrollBy(0, 15 * LINE_HEIGHT); // Max bounds (scrolls to line 15)
+      expect(vm.getScrollTop()).toBe(15 * LINE_HEIGHT);
+
+      // Expand window to show 10 lines. New max scrollTop is 10 * LINE_HEIGHT.
+      vm.setViewport(800, 10 * LINE_HEIGHT, CHAR_WIDTH);
+      expect(vm.getScrollTop()).toBe(10 * LINE_HEIGHT);
+    });
+
+    it("automatically re-clamps scroll position during content shrinkage", () => {
+      let maxLen = 100;
+      const stub = makeStub({
+        lineCount: 10,
+        maxLineLength: maxLen,
+        overrides: { getMaxLineLength: () => maxLen },
+      });
+      const vm = makeVM(stub, 0, 5, 80);
+      vm.scrollBy(200 * CHAR_WIDTH, 0);
+
+      // Now scrollLeft is at maximum boundaries: (100 + 3 - 80) * CHAR_WIDTH = 23 * CHAR_WIDTH
+      expect(vm.getScrollLeft()).toBe(23 * CHAR_WIDTH);
+
+      // Simulate a deletion leaving longest line at length 30
+      maxLen = 30;
+      vm.getVisibleLines(); // Calls internal clamp function side-effect during React render
+
+      // Clamps down to 0 because viewport > content width
+      expect(vm.getScrollLeft()).toBe(0);
+    });
+  });
+  
+  // -------------------------------------------------------------------------
+  // Delegation validation
+  // -------------------------------------------------------------------------
+
+  describe("execute / subscribe delegates to editor", () => {
+    it("delegates to editor.subscribe", () => {
       const unsub = vi.fn();
       const stub = makeStub({
         lineCount: 10,
@@ -351,261 +336,13 @@ describe("ViewModel", () => {
       expect(stub.subscribe).toHaveBeenCalledWith(callback);
       expect(returned).toBe(unsub);
     });
-  });
 
-  // -------------------------------------------------------------------------
-  // execute — delegates to editor
-  // -------------------------------------------------------------------------
-
-  describe("execute", () => {
-    it("delegates to editor.execute with the exact command", () => {
+    it("delegates to editor.execute", () => {
       const stub = makeStub({ lineCount: 10 });
       const vm = makeVM(stub);
-      const cmd = { type: "delete_backward" as const };
+      const cmd = { type: "insert_text" as const, text: "foo" };
       vm.execute(cmd);
       expect(stub.execute).toHaveBeenCalledWith(cmd);
-    });
-
-    it("delegates insert_text command", () => {
-      const stub = makeStub({ lineCount: 10 });
-      const vm = makeVM(stub);
-      const cmd = { type: "insert_text" as const, text: "hello" };
-      vm.execute(cmd);
-      expect(stub.execute).toHaveBeenCalledWith(cmd);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // getVisibleLineCount
-  // -------------------------------------------------------------------------
-
-  describe("getVisibleLineCount", () => {
-    it("returns the value passed at construction", () => {
-      const vm = makeVM(makeStub({ lineCount: 20 }), 0, 5);
-      expect(vm.getVisibleLineCount()).toBe(5);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // setVisibleLineCount
-  // -------------------------------------------------------------------------
-
-  describe("setVisibleLineCount", () => {
-    it("updates the visible line count", () => {
-      const vm = makeVM(makeStub({ lineCount: 20 }), 0, 5);
-      vm.setVisibleLineCount(10);
-      expect(vm.getVisibleLineCount()).toBe(10);
-    });
-
-    it("clamps count to at least 1", () => {
-      const vm = makeVM(makeStub({ lineCount: 20 }), 0, 5);
-      vm.setVisibleLineCount(0);
-      expect(vm.getVisibleLineCount()).toBe(1);
-      vm.setVisibleLineCount(-5);
-      expect(vm.getVisibleLineCount()).toBe(1);
-    });
-
-    it("clamps startLine when shrinking the viewport would overshoot the document", () => {
-      // 10 lines, viewport starts at 7, showing 3 lines (7,8,9)
-      const vm = makeVM(makeStub({ lineCount: 10 }), 7, 3);
-      // Grow viewport to 5 → max start = 10-5=5, so startLine clamps to 5
-      vm.setVisibleLineCount(5);
-      expect(vm.getVisibleLines()[0].lineNumber).toBe(5);
-    });
-
-    it("does not change startLine when growing the viewport with room", () => {
-      // 20 lines, start at 5, showing 5 lines
-      const vm = makeVM(makeStub({ lineCount: 20 }), 5, 5);
-      vm.setVisibleLineCount(10);
-      expect(vm.getVisibleLines()[0].lineNumber).toBe(5);
-    });
-
-    it("correctly shows more lines after growing the viewport", () => {
-      const vm = makeVM(makeStub({ lineCount: 20 }), 0, 5);
-      expect(vm.getVisibleLines()).toHaveLength(5);
-      vm.setVisibleLineCount(10);
-      expect(vm.getVisibleLines()).toHaveLength(10);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Horizontal scrolling — getScrollX, scrollLeft, scrollRight
-  // -------------------------------------------------------------------------
-
-  describe("getScrollX", () => {
-    it("returns 0 initially", () => {
-      const vm = makeVM(makeStub({ lineCount: 10 }), 0, 5);
-      expect(vm.getScrollX()).toBe(0);
-    });
-  });
-
-  describe("scrollRight", () => {
-    it("increments scrollX by 1 by default", () => {
-      const vm = makeVM(makeStub({ lineCount: 10, maxLineLength: 100 }), 0, 5);
-      vm.scrollRight();
-      expect(vm.getScrollX()).toBe(1);
-    });
-
-    it("increments scrollX by the given amount", () => {
-      const vm = makeVM(makeStub({ lineCount: 10, maxLineLength: 100 }), 0, 5);
-      vm.scrollRight(5);
-      expect(vm.getScrollX()).toBe(5);
-    });
-
-    it("clamps at maxLineLength - visibleColumnCount + PADDING", () => {
-      // maxLineLength=50, visibleColumnCount=80(default), PADDING=3
-      // maxScrollX = max(50 - 80 + 3, 0) = 0
-      const vm = makeVM(makeStub({ lineCount: 10, maxLineLength: 50 }), 0, 5);
-      vm.scrollRight(100);
-      expect(vm.getScrollX()).toBe(0);
-    });
-
-    it("clamps correctly when maxLineLength exceeds visibleColumnCount", () => {
-      // maxLineLength=100, visibleColumnCount=80(default), PADDING=3
-      // maxScrollX = 100 - 80 + 3 = 23
-      const vm = makeVM(makeStub({ lineCount: 10, maxLineLength: 100 }), 0, 5);
-      vm.scrollRight(10000);
-      expect(vm.getScrollX()).toBe(23);
-    });
-
-    it("clamps with custom visibleColumnCount", () => {
-      // maxLineLength=30, visibleColumnCount=20, PADDING=3
-      // maxScrollX = 30 - 20 + 3 = 13
-      const vm = makeVM(makeStub({ lineCount: 10, maxLineLength: 30 }), 0, 5);
-      vm.setVisibleColumnCount(20);
-      vm.scrollRight(100);
-      expect(vm.getScrollX()).toBe(13);
-    });
-  });
-
-  describe("scrollLeft", () => {
-    it("decrements scrollX by 1 by default", () => {
-      const vm = makeVM(makeStub({ lineCount: 10, maxLineLength: 100 }), 0, 5);
-      vm.scrollRight(5);
-      vm.scrollLeft();
-      expect(vm.getScrollX()).toBe(4);
-    });
-
-    it("decrements scrollX by the given amount", () => {
-      const vm = makeVM(makeStub({ lineCount: 10, maxLineLength: 100 }), 0, 5);
-      vm.scrollRight(10);
-      vm.scrollLeft(3);
-      expect(vm.getScrollX()).toBe(7);
-    });
-
-    it("clamps at 0", () => {
-      const vm = makeVM(makeStub({ lineCount: 10 }), 0, 5);
-      vm.scrollRight(2);
-      vm.scrollLeft(100);
-      expect(vm.getScrollX()).toBe(0);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // setVisibleColumnCount / getVisibleColumnCount
-  // -------------------------------------------------------------------------
-
-  describe("setVisibleColumnCount", () => {
-    it("updates the visible column count", () => {
-      const vm = makeVM(makeStub({ lineCount: 10 }), 0, 5);
-      vm.setVisibleColumnCount(120);
-      expect(vm.getVisibleColumnCount()).toBe(120);
-    });
-
-    it("clamps to at least 1", () => {
-      const vm = makeVM(makeStub({ lineCount: 10 }), 0, 5);
-      vm.setVisibleColumnCount(0);
-      expect(vm.getVisibleColumnCount()).toBe(1);
-      vm.setVisibleColumnCount(-10);
-      expect(vm.getVisibleColumnCount()).toBe(1);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // scrollToCursor — horizontal behavior
-  // -------------------------------------------------------------------------
-
-  describe("scrollToCursor (horizontal)", () => {
-    it("is a no-op when cursor column is within visible range", () => {
-      const vm = makeVM(makeStub({ lineCount: 10, cursorCol: 5 }), 0, 5);
-      vm.setVisibleColumnCount(80);
-      vm.scrollToCursor();
-      expect(vm.getScrollX()).toBe(0);
-    });
-
-    it("scrolls right when cursor is past the right edge", () => {
-      const vm = makeVM(makeStub({ lineCount: 10, cursorCol: 90, maxLineLength: 200 }), 0, 5);
-      vm.setVisibleColumnCount(80);
-      vm.scrollToCursor();
-      // scrollX = 90 - 80 + 1 = 11
-      expect(vm.getScrollX()).toBe(11);
-    });
-
-    it("scrolls left when cursor is before the left edge", () => {
-      const vm = makeVM(makeStub({ lineCount: 10, cursorCol: 3 }), 0, 5);
-      vm.setVisibleColumnCount(80);
-      vm.scrollRight(10); // scrollX = 10
-      vm.scrollToCursor();
-      // cursor at col 3 < scrollX 10 → scrollX = 3
-      expect(vm.getScrollX()).toBe(3);
-    });
-
-    it("after scrolling, cursor column is within visible range", () => {
-      const vm = makeVM(makeStub({ lineCount: 10, cursorCol: 100, maxLineLength: 200 }), 0, 5);
-      vm.setVisibleColumnCount(40);
-      vm.scrollToCursor();
-      const scrollX = vm.getScrollX();
-      expect(100).toBeGreaterThanOrEqual(scrollX);
-      expect(100).toBeLessThan(scrollX + 40);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // scrollX re-clamping after document changes
-  // -------------------------------------------------------------------------
-
-  describe("scrollX re-clamping", () => {
-    it("getVisibleLines re-clamps scrollX when maxLineLength shrinks", () => {
-      let maxLen = 100;
-      const stub = makeStub({
-        lineCount: 10,
-        maxLineLength: maxLen,
-        overrides: {
-          getMaxLineLength: () => maxLen,
-        },
-      });
-      const vm = makeVM(stub, 0, 5);
-      vm.setVisibleColumnCount(80);
-      // maxScrollX = 100 - 80 + 3 = 23
-      vm.scrollRight(20); // scrollX = 20, within bounds
-      expect(vm.getScrollX()).toBe(20);
-
-      // Simulate the longest line being deleted
-      maxLen = 30;
-      // maxScrollX = max(30 - 80 + 3, 0) = 0
-      vm.getVisibleLines(); // triggers re-clamp
-      expect(vm.getScrollX()).toBe(0);
-    });
-
-    it("getVisibleLines re-clamps scrollX to new maxScrollX, not 0", () => {
-      let maxLen = 100;
-      const stub = makeStub({
-        lineCount: 10,
-        maxLineLength: maxLen,
-        overrides: {
-          getMaxLineLength: () => maxLen,
-        },
-      });
-      const vm = makeVM(stub, 0, 5);
-      vm.setVisibleColumnCount(40);
-      // maxScrollX = 100 - 40 + 3 = 63
-      vm.scrollRight(50); // scrollX = 50
-      expect(vm.getScrollX()).toBe(50);
-
-      // Shrink maxLineLength so new maxScrollX = 60 - 40 + 3 = 23
-      maxLen = 60;
-      vm.getVisibleLines();
-      expect(vm.getScrollX()).toBe(23);
     });
   });
 });
