@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import { useCallback, useRef } from "react";
 
 interface Props {
@@ -66,10 +67,15 @@ export function Scrollbar({
 
   const handleThumbPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!dragRef.current) return;
-      const delta = (isVertical ? e.clientY : e.clientX) - dragRef.current.startPointer;
-      const newThumbOffset = Math.max(0, Math.min(dragRef.current.startOffset + (delta / thumbTravel) * scrollable, scrollable));
-      onScroll(newThumbOffset);
+      if (!dragRef.current) {
+        return;
+      }
+      const pointerPos = isVertical ? e.clientY : e.clientX;
+      const delta = pointerPos - dragRef.current.startPointer;
+      const dragRatio = delta / thumbTravel;
+      const unclamped = dragRef.current.startOffset + dragRatio * scrollable;
+      const newOffset = Math.max(0, Math.min(unclamped, scrollable));
+      onScroll(newOffset);
     },
     [isVertical, thumbTravel, scrollable, onScroll],
   );
@@ -87,11 +93,13 @@ export function Scrollbar({
   // -------------------------------------------------------------------------
   const handleTrackPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!trackRef.current) return;
+      if (!trackRef.current) {
+        return;
+      }
       const rect = trackRef.current.getBoundingClientRect();
-      const clickPos = isVertical ? e.clientY - rect.top : e.clientX - rect.left;
+      const rawPos = isVertical ? e.clientY - rect.top : e.clientX - rect.left;
       // Jump so that thumb centre aligns to click point
-      const centred = Math.max(0, Math.min(clickPos - thumbSize / 2, thumbTravel));
+      const centred = Math.max(0, Math.min(rawPos - thumbSize / 2, thumbTravel));
       const newOffset = thumbTravel === 0 ? 0 : (centred / thumbTravel) * scrollable;
       onScroll(newOffset);
     },
@@ -104,37 +112,37 @@ export function Scrollbar({
   scrollOffsetRef.current = scrollOffset;
 
   // Don't render when content fits entirely in viewport (no need to scroll)
-  if (ratio >= 1) return null;
+  if (ratio >= 1) {
+    return null;
+  }
 
+  // Only truly dynamic pixel values stay inline; axis-dependent static sides
+  // are expressed as Tailwind utilities via clsx.
   const trackStyle: React.CSSProperties = isVertical
-    ? { top: 0, right: 0, width: "var(--scrollbar-size)", height: "100%" }
-    : { bottom: 0, left: 0, height: "var(--scrollbar-size)", width: "100%" };
+    ? { height: "100%" }
+    : { width: "100%" };
 
   const thumbStyle: React.CSSProperties = isVertical
-    ? {
-        position: "absolute",
-        top: thumbOffset,
-        left: 0,
-        right: 0,
-        height: thumbSize,
-      }
-    : {
-        position: "absolute",
-        left: thumbOffset,
-        top: 0,
-        bottom: 0,
-        width: thumbSize,
-      };
+    ? { top: thumbOffset, height: thumbSize }
+    : { left: thumbOffset, width: thumbSize };
 
   return (
     <div
       ref={trackRef}
-      className={`scrollbar-track scrollbar-track--${orientation}${visible ? " scrollbar-track--visible" : ""}`}
+      className={clsx(
+        "scrollbar-track",
+        isVertical ? "scrollbar-track--vertical" : "scrollbar-track--horizontal",
+        visible && "scrollbar-track--visible",
+      )}
       style={trackStyle}
       onPointerDown={handleTrackPointerDown}
     >
       <div
-        className="scrollbar-thumb"
+        className={clsx(
+          "scrollbar-thumb",
+          isVertical ? "inset-x-0" : "inset-y-0",
+          "absolute",
+        )}
         style={thumbStyle}
         onPointerDown={handleThumbPointerDown}
         onPointerMove={handleThumbPointerMove}

@@ -11,7 +11,6 @@
   --scrollbar-thumb-hover-color: rgba(220, 220, 220, 0.65);
   --scrollbar-thumb-active-color: rgba(255, 255, 255, 0.8);
   --scrollbar-track-color: transparent;
-  --scrollbar-radius: 4px;
   --scrollbar-fade-duration: 200ms;
 }
 
@@ -87,7 +86,19 @@ body {
   transition: opacity var(--scrollbar-fade-duration) ease;
   /* Prevent scrollbar pointer events from bubbling to editor content */
   pointer-events: none;
-  border-radius: var(--scrollbar-radius);
+}
+
+/* Axis-specific track placement — keeps JS style object minimal */
+.scrollbar-track--vertical {
+  top: 0;
+  right: 0;
+  width: var(--scrollbar-size);
+}
+
+.scrollbar-track--horizontal {
+  bottom: 0;
+  left: 0;
+  height: var(--scrollbar-size);
 }
 
 .scrollbar-track--visible {
@@ -96,7 +107,7 @@ body {
 }
 
 .scrollbar-thumb {
-  border-radius: var(--scrollbar-radius);
+  /* No border-radius — thumb is a flat rectangle */
   background: var(--scrollbar-thumb-color);
   transition: background 120ms ease;
   cursor: pointer;
@@ -109,4 +120,3 @@ body {
 .scrollbar-thumb:active {
   background: var(--scrollbar-thumb-active-color);
 }
-
