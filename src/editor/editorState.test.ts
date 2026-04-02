@@ -178,6 +178,22 @@ describe("EditorState", () => {
       expect(editor.getCursor().isCollapsed()).toBe(true);
       expect(editor.getCursor().active.isEqual(p(0, 5))).toBe(true);
     });
+
+    it("extends selection to the left", () => {
+      const editor = makeEditor("hello", p(0, 3));
+      editor.execute({ type: "move_cursor", direction: "left", select: true });
+      expect(editor.getCursor().isCollapsed()).toBe(false);
+      expect(editor.getCursor().active.isEqual(p(0, 2))).toBe(true);
+      expect(editor.getCursor().anchor.isEqual(p(0, 3))).toBe(true);
+    });
+
+    it("extends selection to the right", () => {
+      const editor = makeEditor("hello", p(0, 3));
+      editor.execute({ type: "move_cursor", direction: "right", select: true });
+      expect(editor.getCursor().isCollapsed()).toBe(false);
+      expect(editor.getCursor().active.isEqual(p(0, 4))).toBe(true);
+      expect(editor.getCursor().anchor.isEqual(p(0, 3))).toBe(true);
+    });
   });
 
   describe("move_cursor up/down", () => {
@@ -228,6 +244,55 @@ describe("EditorState", () => {
       editor.execute({ type: "move_cursor", direction: "down" });
       expect(editor.getCursor().isCollapsed()).toBe(true);
     });
+
+    it("extends selection up", () => {
+      const editor = makeEditor("hello\nworld", p(1, 3));
+      editor.execute({ type: "move_cursor", direction: "up", select: true });
+      expect(editor.getCursor().isCollapsed()).toBe(false);
+      expect(editor.getCursor().active.isEqual(p(0, 3))).toBe(true);
+      expect(editor.getCursor().anchor.isEqual(p(1, 3))).toBe(true);
+    });
+
+    it("extends selection down", () => {
+      const editor = makeEditor("hello\nworld", p(0, 3));
+      editor.execute({ type: "move_cursor", direction: "down", select: true });
+      expect(editor.getCursor().isCollapsed()).toBe(false);
+      expect(editor.getCursor().active.isEqual(p(1, 3))).toBe(true);
+      expect(editor.getCursor().anchor.isEqual(p(0, 3))).toBe(true);
+    });
+  });
+
+  describe("move_cursor document & line bounds", () => {
+    it("moves to line start", () => {
+      const editor = makeEditor("hello", p(0, 3));
+      editor.execute({ type: "move_cursor", direction: "lineStart" });
+      expect(editor.getCursor().active.isEqual(p(0, 0))).toBe(true);
+    });
+
+    it("moves to line end", () => {
+      const editor = makeEditor("hello", p(0, 3));
+      editor.execute({ type: "move_cursor", direction: "lineEnd" });
+      expect(editor.getCursor().active.isEqual(p(0, 5))).toBe(true);
+    });
+
+    it("extends selection to line end", () => {
+      const editor = makeEditor("hello", p(0, 3));
+      editor.execute({ type: "move_cursor", direction: "lineEnd", select: true });
+      expect(editor.getCursor().active.isEqual(p(0, 5))).toBe(true);
+      expect(editor.getCursor().anchor.isEqual(p(0, 3))).toBe(true);
+    });
+
+    it("moves to document start", () => {
+      const editor = makeEditor("hello\nworld", p(1, 3));
+      editor.execute({ type: "move_cursor", direction: "documentStart" });
+      expect(editor.getCursor().active.isEqual(p(0, 0))).toBe(true);
+    });
+
+    it("moves to document end", () => {
+      const editor = makeEditor("hello\nworld", p(0, 3));
+      editor.execute({ type: "move_cursor", direction: "documentEnd" });
+      expect(editor.getCursor().active.isEqual(p(1, 5))).toBe(true);
+    });
   });
 
   describe("move_cursor_to", () => {
@@ -253,6 +318,15 @@ describe("EditorState", () => {
       editor.execute({ type: "select_to", position: p(0, 0) });
       expect(editor.getCursor().anchor.isEqual(p(0, 5))).toBe(true);
       expect(editor.getCursor().active.isEqual(p(0, 0))).toBe(true);
+    });
+  });
+
+  describe("select_all", () => {
+    it("selects the entire document", () => {
+      const editor = makeEditor("hello\nworld", p(0, 0));
+      editor.execute({ type: "select_all" });
+      expect(editor.getCursor().anchor.isEqual(p(0, 0))).toBe(true);
+      expect(editor.getCursor().active.isEqual(p(1, 5))).toBe(true);
     });
   });
 

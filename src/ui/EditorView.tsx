@@ -224,7 +224,11 @@ export function EditorView({ viewModel }: Props) {
     }
 
     // Place a collapsed cursor at the click position — this becomes the anchor
-    viewModel.execute({ type: "move_cursor_to", position });
+    if (e.shiftKey) {
+      viewModel.execute({ type: "select_to", position });
+    } else {
+      viewModel.execute({ type: "move_cursor_to", position });
+    }
 
     isDraggingRef.current = true;
     didMoveRef.current = false;

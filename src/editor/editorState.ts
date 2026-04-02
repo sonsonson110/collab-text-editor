@@ -1,6 +1,6 @@
 import type { IDocument } from "@/core/document/document";
 import { Position } from "@/core/position/position";
-import type { Command } from "@/editor/commands";
+import type { Command, CursorDirection } from "@/editor/commands";
 import { Cursor } from "@/editor/cursor/cursor";
 import { Range } from "@/core/position/range";
 import { HistoryManager } from "@/editor/history";
@@ -156,62 +156,93 @@ export class EditorState implements IEditorState {
     });
   }
 
-  moveCursor(direction: "left" | "right" | "up" | "down"): void {
+  moveCursor(
+    direction: CursorDirection,
+    select?: boolean,
+  ): void {
     const cursor = this.cursor;
 
-    // collapse selection if exists
-    if (!cursor.isCollapsed()) {
-      this.cursor =
-        direction === "left"
-          ? cursor.collapseToStart()
-          : cursor.collapseToEnd();
-      return;
+    if (
+      !select &&
+      !cursor.isCollapsed() &&
+      ["left", "right", "up", "down"].includes(direction)
+    ) {
+      if (direction === "left") {
+        this.cursor = cursor.collapseToStart();
+        return;
+      }
+      if (direction === "right") {
+        this.cursor = cursor.collapseToEnd();
+        return;
+      }
+      this.cursor = cursor.collapseToEnd();
     }
 
     const current = cursor.active;
     const offset = this.document.getOffsetAt(current);
+    let newPos = current;
 
     switch (direction) {
       case "left":
-        if (offset > 0) {
-          const newPos = this.document.getPositionAt(offset - 1);
-          this.cursor = cursor.moveTo(newPos);
-        }
+        if (offset > 0) newPos = this.document.getPositionAt(offset - 1);
         break;
 
       case "right":
-        if (offset < this.document.getLength()) {
-          const newPos = this.document.getPositionAt(offset + 1);
-          this.cursor = cursor.moveTo(newPos);
+        if (offset < this.document.getLength())
+          newPos = this.document.getPositionAt(offset + 1);
+        break;
+
+      case "up":
+        if (current.line > 0) {
+          const nextLineLength = this.document.getLineLength(current.line - 1);
+          newPos = new Position(
+            current.line - 1,
+            Math.min(current.column, nextLineLength),
+          );
         }
         break;
 
-      case "up": {
-        const currentLine = current.line;
-        if (currentLine > 0) {
-          const nextLineLength = this.document.getLineLength(currentLine - 1);
-          const newPos = new Position(
-            currentLine - 1,
+      case "down":
+        if (current.line < this.document.getLineCount() - 1) {
+          const nextLineLength = this.document.getLineLength(current.line + 1);
+          newPos = new Position(
+            current.line + 1,
             Math.min(current.column, nextLineLength),
           );
-          this.cursor = cursor.moveTo(newPos);
         }
         break;
-      }
 
-      case "down": {
-        const currentLine = current.line;
-        if (currentLine < this.document.getLineCount() - 1) {
-          const nextLineLength = this.document.getLineLength(currentLine + 1);
-          const newPos = new Position(
-            currentLine + 1,
-            Math.min(current.column, nextLineLength),
-          );
-          this.cursor = cursor.moveTo(newPos);
-        }
+      case "lineStart":
+        newPos = new Position(current.line, 0);
+        break;
+
+      case "lineEnd":
+        newPos = new Position(current.line, this.document.getLineLength(current.line));
+        break;
+
+      case "documentStart":
+        newPos = new Position(0, 0);
+        break;
+
+      case "documentEnd": {
+        const lastLine = this.document.getLineCount() - 1;
+        newPos = new Position(lastLine, this.document.getLineLength(lastLine));
         break;
       }
     }
+
+    if (select) {
+      this.cursor = cursor.setActive(newPos);
+    } else {
+      this.cursor = cursor.moveTo(newPos);
+    }
+  }
+
+  private selectAll(): void {
+    const start = new Position(0, 0);
+    const lastLine = this.document.getLineCount() - 1;
+    const end = new Position(lastLine, this.document.getLineLength(lastLine));
+    this.cursor = new Cursor(start, end);
   }
 
   private expandSelection(position: Position): void {
@@ -261,7 +292,7 @@ export class EditorState implements IEditorState {
         break;
 
       case "move_cursor":
-        this.moveCursor(command.direction);
+        this.moveCursor(command.direction, command.select);
         break;
 
       case "move_cursor_to":
@@ -270,6 +301,10 @@ export class EditorState implements IEditorState {
 
       case "select_to":
         this.expandSelection(command.position);
+        break;
+
+      case "select_all":
+        this.selectAll();
         break;
 
       case "undo":

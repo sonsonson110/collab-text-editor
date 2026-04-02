@@ -10,10 +10,24 @@ export function mapKeyboardEvent(e: React.KeyboardEvent): Command | null {
     return { type: "redo" };
   }
 
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
+    return { type: "select_all" };
+  }
+
+  if ((e.ctrlKey || e.metaKey) && e.key === "Home") {
+    return { type: "move_cursor", direction: "documentStart", select: e.shiftKey };
+  }
+
+  if ((e.ctrlKey || e.metaKey) && e.key === "End") {
+    return { type: "move_cursor", direction: "documentEnd", select: e.shiftKey };
+  }
+
   // text input
   if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
     return { type: "insert_text", text: e.key };
   }
+
+  const isShift = e.shiftKey;
 
   switch (e.key) {
     case "Enter":
@@ -25,17 +39,23 @@ export function mapKeyboardEvent(e: React.KeyboardEvent): Command | null {
     case "Delete":
       return { type: "delete_forward" };
 
+    case "Home":
+      return { type: "move_cursor", direction: "lineStart", select: isShift };
+
+    case "End":
+      return { type: "move_cursor", direction: "lineEnd", select: isShift };
+
     case "ArrowLeft":
-      return { type: "move_cursor", direction: "left" };
+      return { type: "move_cursor", direction: "left", select: isShift };
 
     case "ArrowRight":
-      return { type: "move_cursor", direction: "right" };
+      return { type: "move_cursor", direction: "right", select: isShift };
 
     case "ArrowUp":
-      return { type: "move_cursor", direction: "up" };
+      return { type: "move_cursor", direction: "up", select: isShift };
 
     case "ArrowDown":
-      return { type: "move_cursor", direction: "down" };
+      return { type: "move_cursor", direction: "down", select: isShift };
   }
 
   return null;

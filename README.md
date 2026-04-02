@@ -13,11 +13,15 @@ Live demo: <https://educational-text-editor.web.app/>
 - [x] Mouse wheel scrolls viewport (smooth, scaled to delta)
 - [x] Double-click selects the word under the cursor
 - [x] Triple-click selects the entire line
-- [ ] Shift + click extends the selection from the current anchor
-- [ ] Shift + arrow keys extend the selection
-- [ ] Ctrl/Cmd + A selects all text
-- [ ] Home / End keys move cursor to start / end of line
-- [ ] Ctrl/Cmd + Home / End moves cursor to start / end of document
+- [x] Shift + click extends the selection from the current anchor
+- [x] Shift + arrow keys extend the selection
+- [x] Ctrl/Cmd + A selects all text
+- [x] Home / End keys move cursor to start / end of line
+- [x] Ctrl/Cmd + Home / End moves cursor to start / end of document
+- [ ] Ctrl + arrow keys move cursor by word
+- [ ] Ctrl + Shift + arrow keys extend selection by word
+- [ ] Ctrl + backspace delete word
+- [ ] Ctrl + delete delete word
 
 ---
 
