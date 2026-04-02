@@ -8,12 +8,14 @@ export type CursorDirection =
   | "lineStart"
   | "lineEnd"
   | "documentStart"
-  | "documentEnd";
+  | "documentEnd"
+  | "wordLeft"
+  | "wordRight";
 
 export type Command =
   | { type: "insert_text"; text: string }
-  | { type: "delete_backward" }
-  | { type: "delete_forward" }
+  | { type: "delete_backward"; granularity?: "word" }
+  | { type: "delete_forward"; granularity?: "word" }
   | {
       type: "move_cursor";
       direction: CursorDirection;

@@ -34,10 +34,16 @@ export function mapKeyboardEvent(e: React.KeyboardEvent): Command | null {
       return { type: "insert_text", text: "\n" };
 
     case "Backspace":
-      return { type: "delete_backward" };
+      return {
+        type: "delete_backward",
+        granularity: e.ctrlKey || e.metaKey ? "word" : undefined,
+      };
 
     case "Delete":
-      return { type: "delete_forward" };
+      return {
+        type: "delete_forward",
+        granularity: e.ctrlKey || e.metaKey ? "word" : undefined,
+      };
 
     case "Home":
       return { type: "move_cursor", direction: "lineStart", select: isShift };
@@ -46,10 +52,18 @@ export function mapKeyboardEvent(e: React.KeyboardEvent): Command | null {
       return { type: "move_cursor", direction: "lineEnd", select: isShift };
 
     case "ArrowLeft":
-      return { type: "move_cursor", direction: "left", select: isShift };
+      return {
+        type: "move_cursor",
+        direction: e.ctrlKey || e.metaKey ? "wordLeft" : "left",
+        select: isShift,
+      };
 
     case "ArrowRight":
-      return { type: "move_cursor", direction: "right", select: isShift };
+      return {
+        type: "move_cursor",
+        direction: e.ctrlKey || e.metaKey ? "wordRight" : "right",
+        select: isShift,
+      };
 
     case "ArrowUp":
       return { type: "move_cursor", direction: "up", select: isShift };

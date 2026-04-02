@@ -1,5 +1,6 @@
 import type { IDocument } from "@/core/document/document";
 import { Position } from "@/core/position/position";
+import { getWordLeftOffset, getWordRightOffset } from "@/core/utils";
 import type { Command, CursorDirection } from "@/editor/commands";
 import { Cursor } from "@/editor/cursor/cursor";
 import { Range } from "@/core/position/range";
@@ -69,7 +70,7 @@ export class EditorState implements IEditorState {
     });
   }
 
-  private deleteBackward(): void {
+  private deleteBackward(granularity: "char" | "word" = "char"): void {
     const range = this.cursor.toRange();
     const cursorBefore = this.cursor;
 
@@ -93,7 +94,12 @@ export class EditorState implements IEditorState {
       return;
     }
 
-    const prevOffset = this.document.getOffsetAt(currentCursor.active) - 1;
+    const currentOffset = this.document.getOffsetAt(currentCursor.active);
+    const prevOffset =
+      granularity === "word"
+        ? getWordLeftOffset(this.document.getText(), currentOffset)
+        : currentOffset - 1;
+
     const prevPosition = this.document.getPositionAt(prevOffset);
     const deleteRange = new Range(prevPosition, currentCursor.active);
     const undoText = this.document.getTextInRange(deleteRange);
@@ -112,7 +118,7 @@ export class EditorState implements IEditorState {
     });
   }
 
-  private deleteForward(): void {
+  private deleteForward(granularity: "char" | "word" = "char"): void {
     const range = this.cursor.toRange();
     const cursorBefore = this.cursor;
 
@@ -133,11 +139,16 @@ export class EditorState implements IEditorState {
     }
     const currentCursor = this.cursor;
     const documentLength = this.document.getLength();
-    if (this.document.getOffsetAt(currentCursor.active) >= documentLength) {
+    const currentOffset = this.document.getOffsetAt(currentCursor.active);
+    if (currentOffset >= documentLength) {
       return;
     }
 
-    const nextOffset = this.document.getOffsetAt(currentCursor.active) + 1;
+    const nextOffset =
+      granularity === "word"
+        ? getWordRightOffset(this.document.getText(), currentOffset)
+        : currentOffset + 1;
+
     const nextPosition = this.document.getPositionAt(nextOffset);
     const deleteRange = new Range(currentCursor.active, nextPosition);
     const undoText = this.document.getTextInRange(deleteRange);
@@ -229,6 +240,18 @@ export class EditorState implements IEditorState {
         newPos = new Position(lastLine, this.document.getLineLength(lastLine));
         break;
       }
+
+      case "wordLeft":
+        newPos = this.document.getPositionAt(
+          getWordLeftOffset(this.document.getText(), offset)
+        );
+        break;
+
+      case "wordRight":
+        newPos = this.document.getPositionAt(
+          getWordRightOffset(this.document.getText(), offset)
+        );
+        break;
     }
 
     if (select) {
@@ -284,11 +307,11 @@ export class EditorState implements IEditorState {
         break;
 
       case "delete_backward":
-        this.deleteBackward();
+        this.deleteBackward(command.granularity);
         break;
 
       case "delete_forward":
-        this.deleteForward();
+        this.deleteForward(command.granularity);
         break;
 
       case "move_cursor":

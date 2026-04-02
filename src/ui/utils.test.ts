@@ -173,6 +173,40 @@ describe("UI Utils", () => {
       });
     });
 
+    it("should map word traversal and deletion keys with Ctrl/Cmd", () => {
+      expect(mapKeyboardEvent(createEvent("ArrowLeft", true))).toEqual({
+        type: "move_cursor",
+        direction: "wordLeft",
+        select: false,
+      });
+      expect(mapKeyboardEvent(createEvent("ArrowRight", true))).toEqual({
+        type: "move_cursor",
+        direction: "wordRight",
+        select: false,
+      });
+      expect(mapKeyboardEvent(createEvent("Backspace", true))).toEqual({
+        type: "delete_backward",
+        granularity: "word",
+      });
+      expect(mapKeyboardEvent(createEvent("Delete", true))).toEqual({
+        type: "delete_forward",
+        granularity: "word",
+      });
+    });
+
+    it("should map word traversal with selection keys with Shift + Ctrl/Cmd", () => {
+      expect(mapKeyboardEvent(createEvent("ArrowLeft", true, false, true))).toEqual({
+        type: "move_cursor",
+        direction: "wordLeft",
+        select: true,
+      });
+      expect(mapKeyboardEvent(createEvent("ArrowRight", true, false, true))).toEqual({
+        type: "move_cursor",
+        direction: "wordRight",
+        select: true,
+      });
+    });
+
     it("should map extend selection keys with Shift", () => {
       expect(
         mapKeyboardEvent(createEvent("ArrowLeft", false, false, true)),

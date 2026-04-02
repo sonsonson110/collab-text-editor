@@ -18,10 +18,10 @@ Live demo: <https://educational-text-editor.web.app/>
 - [x] Ctrl/Cmd + A selects all text
 - [x] Home / End keys move cursor to start / end of line
 - [x] Ctrl/Cmd + Home / End moves cursor to start / end of document
-- [ ] Ctrl + arrow keys move cursor by word
-- [ ] Ctrl + Shift + arrow keys extend selection by word
-- [ ] Ctrl + backspace delete word
-- [ ] Ctrl + delete delete word
+- [x] Ctrl + arrow keys move cursor by word
+- [x] Ctrl + Shift + arrow keys extend selection by word
+- [x] Ctrl + backspace delete word
+- [x] Ctrl + delete delete word
 
 ---
 

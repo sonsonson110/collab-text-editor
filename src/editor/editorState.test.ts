@@ -128,6 +128,44 @@ describe("EditorState", () => {
     });
   });
 
+  describe("delete with word granularity", () => {
+    it("deletes backward by word", () => {
+      const editor = makeEditor("hello world", p(0, 11));
+      editor.execute({ type: "delete_backward", granularity: "word" });
+      expect(editor.getLineContent(0)).toBe("hello ");
+      expect(editor.getCursor().active.isEqual(p(0, 6))).toBe(true);
+    });
+
+    it("deletes backward skipping spaces", () => {
+      // "hello   " -> ""
+      const editor = makeEditor("hello   ", p(0, 8));
+      editor.execute({ type: "delete_backward", granularity: "word" });
+      expect(editor.getLineContent(0)).toBe("");
+      expect(editor.getCursor().active.isEqual(p(0, 0))).toBe(true);
+    });
+
+    it("deletes backward stopping at newline", () => {
+      const editor = makeEditor("hello\n  ", p(1, 2));
+      editor.execute({ type: "delete_backward", granularity: "word" });
+      expect(editor.getLineContent(1)).toBe("");
+      expect(editor.getCursor().active.isEqual(p(1, 0))).toBe(true);
+    });
+
+    it("deletes forward by word", () => {
+      const editor = makeEditor("hello world", p(0, 0));
+      editor.execute({ type: "delete_forward", granularity: "word" });
+      expect(editor.getLineContent(0)).toBe(" world");
+      expect(editor.getCursor().active.isEqual(p(0, 0))).toBe(true);
+    });
+
+    it("deletes forward over whitespace and next word", () => {
+      const editor = makeEditor("   hello", p(0, 0));
+      editor.execute({ type: "delete_forward", granularity: "word" });
+      // since it skips whitespaces to word ends. It will stop at index 8.
+      expect(editor.getLineContent(0)).toBe("");
+    });
+  });
+
   describe("move_cursor left/right", () => {
     it("moves left by one character", () => {
       const editor = makeEditor("hello", p(0, 3));
@@ -259,6 +297,32 @@ describe("EditorState", () => {
       expect(editor.getCursor().isCollapsed()).toBe(false);
       expect(editor.getCursor().active.isEqual(p(1, 3))).toBe(true);
       expect(editor.getCursor().anchor.isEqual(p(0, 3))).toBe(true);
+    });
+  });
+
+  describe("move_cursor word movement", () => {
+    it("moves left by word", () => {
+      const editor = makeEditor("hello world", p(0, 11));
+      editor.execute({ type: "move_cursor", direction: "wordLeft" });
+      expect(editor.getCursor().active.isEqual(p(0, 6))).toBe(true);
+    });
+
+    it("moves left across whitespace", () => {
+      const editor = makeEditor("hello   ", p(0, 8));
+      editor.execute({ type: "move_cursor", direction: "wordLeft" });
+      expect(editor.getCursor().active.isEqual(p(0, 0))).toBe(true);
+    });
+
+    it("moves right by word", () => {
+      const editor = makeEditor("hello world", p(0, 0));
+      editor.execute({ type: "move_cursor", direction: "wordRight" });
+      expect(editor.getCursor().active.isEqual(p(0, 5))).toBe(true);
+    });
+
+    it("moves right skips whitespace", () => {
+      const editor = makeEditor("   hello", p(0, 0));
+      editor.execute({ type: "move_cursor", direction: "wordRight" });
+      expect(editor.getCursor().active.isEqual(p(0, 8))).toBe(true);
     });
   });
 
