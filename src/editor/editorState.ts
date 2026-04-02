@@ -11,6 +11,7 @@ export interface IEditorState {
   getLineCount(): number;
   getLineContent(line: number): string;
   getMaxLineLength(): number;
+  getSelectedText(): string;
   execute(command: Command): void;
   subscribe(listener: () => void): () => void;
 }
@@ -44,6 +45,12 @@ export class EditorState implements IEditorState {
 
   getCursor(): Cursor {
     return this.cursor;
+  }
+
+  getSelectedText(): string {
+    const range = this.cursor.toRange();
+    if (range.isEmpty()) return "";
+    return this.document.getTextInRange(range);
   }
 
   private insert(text: string): void {

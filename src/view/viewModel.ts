@@ -30,6 +30,7 @@ export interface IViewModel {
   isSelectionCollapsed(): boolean;
   getCursorViewportPosition(): { line: number; column: number };
   getAnchorViewportPosition(): { line: number; column: number };
+  getSelectedText(): string;
 
   // Adjust scroll position
   scrollToCursor(): void;
@@ -174,6 +175,10 @@ export class ViewModel implements IViewModel {
 
   isSelectionCollapsed(): boolean {
     return this.editor.getCursor().isCollapsed();
+  }
+
+  getSelectedText(): string {
+    return this.editor.getSelectedText();
   }
 
   // Returns logical coordinate bounds relative to visible start line

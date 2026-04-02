@@ -31,6 +31,7 @@ function makeStub({
     getLineCount: () => lineCount,
     getLineContent: (line: number) => `line${line}`,
     getMaxLineLength: () => maxLineLength,
+    getSelectedText: () => "",
     execute: vi.fn(),
     subscribe: vi.fn(() => () => {}),
     ...overrides,

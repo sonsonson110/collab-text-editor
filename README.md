@@ -27,9 +27,9 @@ Live demo: <https://educational-text-editor.web.app/>
 
 ## Clipboard
 
-- [ ] Ctrl/Cmd + C copies selected text to clipboard
-- [ ] Ctrl/Cmd + X cuts selected text
-- [ ] Ctrl/Cmd + V pastes from clipboard, replacing any active selection
+- [x] Ctrl/Cmd + C copies selected text to clipboard
+- [x] Ctrl/Cmd + X cuts selected text
+- [x] Ctrl/Cmd + V pastes from clipboard, replacing any active selection
 
 ---
 

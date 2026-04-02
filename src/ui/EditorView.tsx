@@ -104,6 +104,37 @@ export function EditorView({ viewModel }: Props) {
   // ---------------------------------------------------------------------------
 
   const handleKeyDown: KeyboardEventHandler<HTMLDivElement> = (e) => {
+    const isCmd = e.ctrlKey || e.metaKey;
+
+    // Handle clipboard actions manually since we lack native DOM text selection
+    if (isCmd && !e.shiftKey) {
+      const key = e.key.toLowerCase();
+      if (key === "c") {
+        if (!viewModel.isSelectionCollapsed()) {
+          navigator.clipboard.writeText(viewModel.getSelectedText());
+        }
+        e.preventDefault();
+        return;
+      }
+      if (key === "x") {
+        if (!viewModel.isSelectionCollapsed()) {
+          navigator.clipboard.writeText(viewModel.getSelectedText());
+          viewModel.execute({ type: "delete_backward" });
+        }
+        e.preventDefault();
+        return;
+      }
+      if (key === "v") {
+        e.preventDefault();
+        navigator.clipboard.readText().then((text) => {
+          if (text) {
+            viewModel.execute({ type: "insert_text", text });
+          }
+        }).catch((err) => console.warn("Failed to read clipboard:", err));
+        return;
+      }
+    }
+
     const command = mapKeyboardEvent(e);
     if (command) {
       viewModel.execute(command);
