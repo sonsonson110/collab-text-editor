@@ -95,7 +95,7 @@ Live demo: <https://educational-text-editor.web.app/>
 ## Polish
 
 - [x] Cursor blink animation
-- [ ] Selection rendered as a highlight layer behind text
+- [x] Selection rendered as a highlight layer behind text
 - [ ] Scroll-follow cursor respects a small deadzone (does not re-centre on every keystroke)
 - [x] Tab key inserts configurable spaces (default 2)
 - [ ] Auto-indent: Enter preserves the indentation of the current line
