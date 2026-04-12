@@ -3,20 +3,7 @@ import { LineIndex } from "@/core/lines/lineIndex";
 import type { Position } from "@/core/position/position";
 import { Range } from "@/core/position/range";
 
-export interface IDocument {
-  getText(): string;
-  getLength(): number;
-  getLineCount(): number;
-  getMaxLineLength(): number;
-  insert(position: Position, text: string): void;
-  delete(range: Range): void;
-  replace(range: Range, newText: string): void;
-  getPositionAt(offset: number): Position;
-  getOffsetAt(position: Position): number;
-  getLineContent(line: number): string;
-  getLineLength(line: number): number;
-  getTextInRange(range: Range): string;
-}
+import type { IDocument } from "@/core/document/idocument";
 
 // Central API for document management
 export class Document implements IDocument {

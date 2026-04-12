@@ -1,4 +1,4 @@
-import type { IDocument } from "@/core/document/document";
+import type { IDocument } from "@/core/document/idocument";
 import { Position } from "@/core/position/position";
 import { getWordLeftOffset, getWordRightOffset } from "@/core/utils";
 import type { Command, CursorDirection } from "@/editor/commands";
@@ -26,6 +26,13 @@ export class EditorState implements IEditorState {
     this.document = doc;
     this.cursor = cursor;
     this.history = new HistoryManager();
+
+    // If the document supports remote-change notifications (i.e. it is a
+    // CollaborativeDocument), forward those notifications through our own
+    // listener pipeline so the UI re-renders on remote edits.
+    if (doc.subscribe) {
+      doc.subscribe(() => this.notifyListeners());
+    }
   }
 
   subscribe(listener: () => void): () => void {
