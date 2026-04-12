@@ -34,14 +34,14 @@ The server is a **separate Node.js process**, not part of the Vite dev server.
 Create a server directory:
 
 ```
-server/
+packages/server/
   index.ts       ← entry point
   package.json
   tsconfig.json
 ```
 
 ```bash
-cd server
+cd packages/server
 npm init -y
 npm install y-websocket yjs ws
 npm install -D typescript @types/node tsx
@@ -55,7 +55,7 @@ The editor client is a Vite + React app. The server is a plain Node.js process. 
 
 ## Step 2 — Create the Server
 
-### `server/index.ts`
+### `packages/server/index.ts`
 
 ```ts
 import { WebSocketServer } from 'ws';
@@ -79,7 +79,7 @@ That's the entire server. `y-websocket` handles:
 - Awareness protocol (used later for cursors)
 - Optional LevelDB persistence
 
-### `server/package.json`
+### `packages/server/package.json`
 
 ```json
 {
@@ -95,7 +95,7 @@ That's the entire server. `y-websocket` handles:
 ### Running the server
 
 ```bash
-cd server
+cd packages/server
 npm run dev
 ```
 
@@ -103,9 +103,10 @@ npm run dev
 
 ## Step 3 — Install Client-Side Provider
 
-Back in the main project:
+Back in the client package (`packages/client`):
 
 ```bash
+cd packages/client
 npm install y-websocket
 ```
 
@@ -229,7 +230,7 @@ By default, `y-websocket` keeps documents **in memory only**. When the server re
 For persistence, `y-websocket` supports LevelDB:
 
 ```bash
-cd server
+cd packages/server
 npm install level
 ```
 
@@ -273,8 +274,7 @@ During development, run both processes:
 **Terminal 1 — Server:**
 
 ```bash
-cd server
-npm run dev
+npm run dev:server
 ```
 
 **Terminal 2 — Client:**
@@ -290,7 +290,7 @@ Open `http://localhost:5173` in two browser tabs. Type in one — see it in the 
 ## Phase 2 Milestone Checklist
 
 ```
-[ ] server/ directory created with its own package.json
+[ ] packages/server/ directory created with its own package.json
 [ ] y-websocket server runs on port 1234
 [ ] y-websocket installed as client dependency
 [ ] WebsocketProvider wired in App.tsx
@@ -306,16 +306,16 @@ Open `http://localhost:5173` in two browser tabs. Type in one — see it in the 
 ## New Files
 
 ```
-server/index.ts           [NEW]
-server/package.json        [NEW]
-server/tsconfig.json       [NEW]
+packages/server/index.ts           [NEW]
+packages/server/package.json        [NEW]
+packages/server/tsconfig.json       [NEW]
 ```
 
 ## Modified Files
 
 ```
-src/App.tsx                ← WebsocketProvider wiring
-package.json               ← add y-websocket dependency
+packages/client/src/App.tsx                ← WebsocketProvider wiring
+packages/client/package.json               ← add y-websocket dependency
 ```
 
 ---

@@ -8,8 +8,7 @@ Review every layer of the current editor to identify what must change, what can 
 
 ## Current Architecture Summary
 
-```
-src/
+packages/client/src/
   core/
     document/
       document.ts       ← Document class: single string + LineIndex

@@ -220,38 +220,40 @@ This is an advanced UX feature — not necessary for learning purposes but inter
 ## Architecture After All Extensions
 
 ```
-src/
-  core/
-    document/
-      document.ts                ← solo mode
-      collaborativeDocument.ts   ← Y.Text backed
-    lines/
-      lineIndex.ts               ← incremental update support
-    position/
-  editor/
-    editorState.ts               ← IUndoRedoManager injection
-    commands.ts
-    cursor/
-    history.ts                   ← solo mode undo
-  collaboration/
-    awareness.ts                 ← awareness types + helpers
-    yjsUndoManager.ts           ← Y.UndoManager wrapper
-    provider.ts                  ← WebSocket / WebRTC provider setup
-    roomManager.ts               ← room listing + switching
-  view/
-    viewModel.ts
-  ui/
-    EditorView.tsx
-    components/
-      RemoteCursor.tsx
-      RemoteSelection.tsx
-      UserPresenceBar.tsx
-      RoomPicker.tsx
-      VersionHistory.tsx
-server/
-  index.ts                       ← y-websocket server
-  auth.ts                        ← optional authentication
-  persistence.ts                 ← optional document persistence
+packages/
+  client/
+    src/
+      core/
+        document/
+          document.ts                ← solo mode
+          collaborativeDocument.ts   ← Y.Text backed
+        lines/
+          lineIndex.ts               ← incremental update support
+        position/
+      editor/
+        editorState.ts               ← IUndoRedoManager injection
+        commands.ts
+        cursor/
+        history.ts                   ← solo mode undo
+      collaboration/
+        awareness.ts                 ← awareness types + helpers
+        yjsUndoManager.ts           ← Y.UndoManager wrapper
+        provider.ts                  ← WebSocket / WebRTC provider setup
+        roomManager.ts               ← room listing + switching
+      view/
+        viewModel.ts
+      ui/
+        EditorView.tsx
+        components/
+          RemoteCursor.tsx
+          RemoteSelection.tsx
+          UserPresenceBar.tsx
+          RoomPicker.tsx
+          VersionHistory.tsx
+  server/
+    index.ts                       ← y-websocket server
+    auth.ts                        ← optional authentication
+    persistence.ts                 ← optional document persistence
 ```
 
 ---

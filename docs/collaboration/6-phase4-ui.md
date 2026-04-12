@@ -326,17 +326,17 @@ const isInViewport = (position) => {
 ## New Files
 
 ```
-src/ui/components/RemoteCursor.tsx      [NEW]
-src/ui/components/RemoteSelection.tsx   [NEW]
-src/ui/components/UserPresenceBar.tsx   [NEW]
+packages/client/src/ui/components/RemoteCursor.tsx      [NEW]
+packages/client/src/ui/components/RemoteSelection.tsx   [NEW]
+packages/client/src/ui/components/UserPresenceBar.tsx   [NEW]
 ```
 
 ## Modified Files
 
 ```
-src/ui/EditorView.tsx      ← render remote cursors + selections
-src/ui/components/index.ts ← export new components
-src/index.css              ← remote cursor / presence styles
+packages/client/src/ui/EditorView.tsx      ← render remote cursors + selections
+packages/client/src/ui/components/index.ts ← export new components
+packages/client/src/index.css              ← remote cursor / presence styles
 ```
 
 ---

@@ -74,7 +74,7 @@ Key properties:
 
 ## Step 1 — Define Awareness State Shape
 
-Create: `src/collaboration/awareness.ts`
+Create: `packages/client/src/collaboration/awareness.ts`
 
 ```ts
 import * as Y from 'yjs';
@@ -311,15 +311,15 @@ Both `HistoryManager` and a `YjsUndoManager` wrapper implement this. `EditorStat
 ## New Files
 
 ```
-src/collaboration/awareness.ts        [NEW]  — types + cursor broadcast helpers
-src/collaboration/yjsUndoManager.ts   [NEW]  — wrapper around Y.UndoManager
+packages/client/src/collaboration/awareness.ts        [NEW]  — types + cursor broadcast helpers
+packages/client/src/collaboration/yjsUndoManager.ts   [NEW]  — wrapper around Y.UndoManager
 ```
 
 ## Modified Files
 
 ```
-src/editor/editorState.ts    ← IUndoRedoManager injection
-src/App.tsx                  ← awareness setup
+packages/client/src/editor/editorState.ts    ← IUndoRedoManager injection
+packages/client/src/App.tsx                  ← awareness setup
 ```
 
 ---

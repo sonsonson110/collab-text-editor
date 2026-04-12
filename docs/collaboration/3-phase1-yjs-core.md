@@ -41,7 +41,7 @@ Yjs is a pure library with zero dependencies. It works entirely in-memory.
 
 ## Step 2 — Create CollaborativeDocument
 
-Create a new file: `src/core/document/collaborativeDocument.ts`
+Create a new file: `packages/client/src/core/document/collaborativeDocument.ts`
 
 This class implements `IDocument` but uses `Y.Text` internally instead of a plain string.
 
@@ -352,17 +352,17 @@ This proves the CRDT merge works without any network.
 ## New Files
 
 ```
-src/core/document/collaborativeDocument.ts    [NEW]
-src/core/document/collaborativeDocument.test.ts [NEW]
+packages/client/src/core/document/collaborativeDocument.ts    [NEW]
+packages/client/src/core/document/collaborativeDocument.test.ts [NEW]
 ```
 
 ## Modified Files
 
 ```
-src/core/document/document.ts    ← IDocument gains optional subscribe()
-src/editor/editorState.ts        ← constructor wires document subscription
-src/App.tsx                       ← collaborative wiring option
-package.json                      ← add yjs dependency
+packages/client/src/core/document/document.ts    ← IDocument gains optional subscribe()
+packages/client/src/editor/editorState.ts        ← constructor wires document subscription
+packages/client/src/App.tsx                       ← collaborative wiring option
+packages/client/package.json                      ← add yjs dependency
 ```
 
 ---

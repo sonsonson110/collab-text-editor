@@ -115,7 +115,7 @@ configuration.
 ## File structure
 
 ```
-src/
+packages/client/src/
   core/
     position/
       position.test.ts
@@ -142,7 +142,7 @@ tests.
 
 ## Configuration
 
-### `vitest.config.ts` (new file at project root)
+### `packages/client/vite.config.ts`
 
 ```ts
 import { defineConfig } from "vitest/config";
@@ -161,7 +161,7 @@ export default defineConfig({
 });
 ```
 
-### `package.json` — add one script
+### `packages/client/package.json` — add script
 
 ```json
 "scripts": {
@@ -266,8 +266,8 @@ Do not test:
 ## Running tests
 
 ```bash
-npm test          # watch mode, reruns on save
-npm run test:run  # single run, for CI
+npm run test          # from root: runs vitest across all workspaces
+npm run test:run      # from root: single run, for CI
 ```
 
 Output shows pass/fail per test, with diff on failure. Vitest also has a
