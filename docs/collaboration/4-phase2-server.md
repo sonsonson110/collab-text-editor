@@ -43,8 +43,8 @@ packages/server/
 ```bash
 cd packages/server
 npm init -y
-npm install y-websocket yjs ws
-npm install -D typescript @types/node tsx
+npm install yjs ws lib0 y-protocols
+npm install -D typescript @types/node @types/ws tsx
 ```
 
 ### Why a separate directory?
@@ -55,28 +55,38 @@ The editor client is a Vite + React app. The server is a plain Node.js process. 
 
 ## Step 2 — Create the Server
 
-### `packages/server/index.ts`
+### `packages/server/src/index.ts`
+
+> **Note**: `y-websocket` version 3 removed its server-side utilities. We must implement the WebSocket handling directly using `ws` and the official `y-protocols` packages, which completely decouples the server implementation from the client.
 
 ```ts
-import { WebSocketServer } from 'ws';
-import { setupWSConnection } from 'y-websocket/bin/utils';
+import { WebSocketServer, WebSocket } from 'ws';
+import * as Y from 'yjs';
+import * as syncProtocol from 'y-protocols/sync';
+import * as awarenessProtocol from 'y-protocols/awareness';
+import * as encoding from 'lib0/encoding';
+import * as decoding from 'lib0/decoding';
+
+// ... Standard Yjs room/connection pooling boilerplate omitted.
+// (See the repository implementation for full sync logic).
 
 const PORT = 1234;
 const wss = new WebSocketServer({ port: PORT });
 
 wss.on('connection', (ws, req) => {
-  // y-websocket handles all Yjs protocol details
-  setupWSConnection(ws, req);
+  // Handshake and listen for msgTypes 0 (sync) and 1 (awareness) manually
+  // using lib0 encoding/decoding and y-protocols handlers.
 });
 
-console.log(`y-websocket server running on ws://localhost:${PORT}`);
+console.log(`Collaboration server running on ws://localhost:${PORT}`);
 ```
 
-That's the entire server. `y-websocket` handles:
+The custom `y-protocols` server handles:
 
-- Document state synchronization
-- Client join/leave
-- Awareness protocol (used later for cursors)
+- Document state synchronization (`y-protocols/sync`)
+- Broadcast routing to connected peers (filtering out the sender)
+- Awareness tracking for cursors and presence (`y-protocols/awareness`)
+- Empty room teardown to manage Node memory resources
 - Optional LevelDB persistence
 
 ### `packages/server/package.json`
@@ -147,12 +157,14 @@ When the provider connects:
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { CollaborativeDocument } from '@/core/document/collaborativeDocument';
+import { useState, useEffect } from 'react';
 
 function EditorInstance() {
-  const viewModelRef = React.useRef<ViewModel | null>(null);
-  const providerRef = React.useRef<WebsocketProvider | null>(null);
+  const [viewModel, setViewModel] = useState<ViewModel | null>(null);
 
-  if (!viewModelRef.current) {
+  // Initialize the collaborative setup inside useEffect to gracefully handle
+  // React 18 Strict Mode double-mounts.
+  useEffect(() => {
     const ydoc = new Y.Doc();
     const ytext = ydoc.getText('content');
 
@@ -162,24 +174,28 @@ function EditorInstance() {
       'document-room',
       ydoc
     );
-    providerRef.current = provider;
 
     const doc = new CollaborativeDocument(ytext);
     const cursor = new Cursor(new Position(0, 0));
     const editorState = new EditorState(doc, cursor);
-    viewModelRef.current = new ViewModel(editorState);
-  }
+    
+    setViewModel(new ViewModel(editorState));
 
-  // Cleanup on unmount
-  useEffect(() => {
+    // Cleanup on unmount gracefully closes the socket connection
     return () => {
-      providerRef.current?.destroy();
+      provider.destroy();
     };
   }, []);
 
-  return <EditorView viewModel={viewModelRef.current} />;
+  if (!viewModel) return null;
+
+  return <EditorView viewModel={viewModel} />;
 }
 ```
+
+> **Note on React 18 Strict Mode**: 
+> In dev mode, React immediately mounts, unmounts, and remounts components. 
+> Initializing the provider inside the render phase with `useRef` causes the unmount to destroy the socket while it's still connecting, leaving the remounted component permanently disconnected. Doing it inside `useEffect` ensures the connection is cleanly recreated.
 
 ---
 
@@ -291,8 +307,7 @@ Open `http://localhost:5173` in two browser tabs. Type in one — see it in the 
 
 ```
 [ ] packages/server/ directory created with its own package.json
-[ ] y-websocket server runs on port 1234
-[ ] y-websocket installed as client dependency
+[ ] `y-websocket` installed as client-side dependency; direct `ws` + `y-protocols` installed on server
 [ ] WebsocketProvider wired in App.tsx
 [ ] Document syncs between two browser tabs
 [ ] Initial content seeded on first connection
