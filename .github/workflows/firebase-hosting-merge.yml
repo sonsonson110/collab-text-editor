@@ -12,6 +12,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: npm ci && npm run build -w @myapp/client
+        env:
+          VITE_WS_URL: ${{ secrets.VITE_WS_URL || 'ws://localhost:1234' }}
+          VITE_ROOM_NAME: ${{ secrets.VITE_ROOM_NAME || 'document-room' }}
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
