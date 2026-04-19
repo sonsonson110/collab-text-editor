@@ -1,7 +1,7 @@
 import { ConnectionIndicator } from "@/ui/components";
 import { EditorSetup } from "@/ui/EditorSetup";
 import { EditorView } from "@/ui/EditorView";
-import { useCollaborativeEditor } from "@/ui/hooks/useCollaborativeEditor";
+import { useCollaborativeEditor } from "@/hooks/useCollaborativeEditor";
 
 function EditorInstance() {
   const { viewModel, status } = useCollaborativeEditor();
