@@ -48,9 +48,6 @@ export function RemoteCursor({ remoteCursor }: Props) {
         left: head.column * charWidth,
         height: LINE_HEIGHT,
         backgroundColor: user.color,
-        /* Expand the hit area so hover is easy even on a 2px bar */
-        padding: "0 4px",
-        margin: "0 -4px",
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}

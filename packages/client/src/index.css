@@ -140,6 +140,14 @@ body {
   transition: opacity 0.3s ease;
 }
 
+/* Invisible hit-area expander — makes hovering the thin 2px cursor bar
+   easier without widening the visible element or shifting its position. */
+.remote-cursor::before {
+  content: "";
+  position: absolute;
+  inset: 0 -4px;
+}
+
 .remote-selection {
   transition:
     left 0.1s ease-out,
