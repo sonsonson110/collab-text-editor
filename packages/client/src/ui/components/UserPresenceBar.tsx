@@ -73,7 +73,7 @@ export function UserPresenceBar({ users, connectionStatus }: Props) {
       ref={scrollRef}
       className={clsx(
         "presence-bar",
-        "flex items-center gap-2 px-3 py-1 text-xs font-mono",
+        "flex items-center gap-2 px-3 pb-0.5 pt-1 text-xs font-mono",
         "border-b border-neutral-700 bg-neutral-900 text-neutral-400",
         "overflow-x-auto scrollbar-hide",
         canScrollLeft && "presence-bar--shadow-left",
