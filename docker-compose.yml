@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: packages/server/Dockerfile
+    ports:
+      - "1234:1234"
+    environment:
+      - PORT=1234
+    restart: unless-stopped
+
+  client:
+    build:
+      context: .
+      dockerfile: packages/client/Dockerfile
+      args:
+        - VITE_WS_URL=ws://localhost:1234
+        - VITE_ROOM_NAME=document-room
+    ports:
+      - "8080:80"
+    depends_on:
+      - server
+    restart: unless-stopped
