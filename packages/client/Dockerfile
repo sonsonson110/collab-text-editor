@@ -40,6 +40,9 @@ RUN apk upgrade --no-cache
 # Copy built assets from builder stage
 COPY --from=builder /app/packages/client/dist /usr/share/nginx/html
 
+# Copy custom Nginx configuration
+COPY packages/client/nginx.conf /etc/nginx/conf.d/default.conf
+
 # Expose port 80
 EXPOSE 80
 
