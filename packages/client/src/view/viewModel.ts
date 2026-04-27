@@ -28,6 +28,18 @@ export interface IViewModel {
   scrollBy(deltaX: number, deltaY: number): void;
   setScrollPosition(left: number, top: number): void;
 
+  /**
+   * Reserves pixel space above line 0 in the scroll area.
+   *
+   * Setting a positive value shifts all rendered lines down by that many pixels,
+   * creating empty space where overlaid chrome (remote-cursor labels, search
+   * bars, replace boxes) can be shown without obscuring document content.
+   * Does **not** notify subscribers — call before the EditorView first renders.
+   */
+  setTopPadding(px: number): void;
+  /** Returns the current top padding in pixels. */
+  getTopPadding(): number;
+
   // Cursor / selection
   isCursorVisible(): boolean;
   isSelectionCollapsed(): boolean;
@@ -58,6 +70,13 @@ export class ViewModel implements IViewModel {
   private viewportHeight: number;
   private charWidth: number;
 
+  /**
+   * Extra pixel space reserved above line 0 in the scroll area.
+   * Layouts set this to accommodate overlaid chrome (e.g. remote-cursor
+   * labels, search bars). Defaults to 0 (no reserved space).
+   */
+  private topPadding: number = 0;
+
   /** Cursor positions of all connected remote peers, in absolute document coordinates. */
   private remoteCursors: RemoteCursorAbsolute[] = [];
 
@@ -81,15 +100,15 @@ export class ViewModel implements IViewModel {
   }
 
   getViewportStart(): number {
-    return Math.floor(this.scrollTop / LINE_HEIGHT);
+    // Lines start at topPadding in the scroll area, so subtract it before
+    // converting the scroll offset to a line index.
+    return Math.floor(Math.max(0, this.scrollTop - this.topPadding) / LINE_HEIGHT);
   }
 
   getViewportEnd(): number {
-    // Top pixel of the line relative to viewtop:
-    // If scrollTop is 10, line 0 is -10 to 10
-    // We render lines up to the one overlapping the bottom edge.
+    // Bottom visible pixel in the scroll area, offset by topPadding.
     return Math.min(
-      Math.ceil((this.scrollTop + this.viewportHeight) / LINE_HEIGHT),
+      Math.max(0, Math.ceil((this.scrollTop + this.viewportHeight - this.topPadding) / LINE_HEIGHT)),
       this.editor.getLineCount(),
     );
   }
@@ -122,7 +141,17 @@ export class ViewModel implements IViewModel {
   }
 
   getScrollHeight(): number {
-    return this.editor.getLineCount() * LINE_HEIGHT;
+    // topPadding zone above line 0 + all lines + one LINE_HEIGHT of bottom
+    // padding so the horizontal scrollbar never overlaps the last line.
+    return this.topPadding + this.editor.getLineCount() * LINE_HEIGHT + LINE_HEIGHT;
+  }
+
+  setTopPadding(px: number): void {
+    this.topPadding = Math.max(0, px);
+  }
+
+  getTopPadding(): number {
+    return this.topPadding;
   }
 
   getScrollWidth(): number {
@@ -240,23 +269,24 @@ export class ViewModel implements IViewModel {
 
   scrollToCursor(): void {
     const cursorPos = this.editor.getCursor().active;
-    
-    // Cursor pixel rect bounds
-    const cursorTop = cursorPos.line * LINE_HEIGHT;
-    const cursorBottom = cursorTop + LINE_HEIGHT;
-    
+
+    // Effective scroll-area pixel positions of the cursor, accounting for
+    // topPadding (line 0 starts at this.topPadding in the scroll area).
+    const cursorScrollTop = this.topPadding + cursorPos.line * LINE_HEIGHT;
+    const cursorScrollBottom = cursorScrollTop + LINE_HEIGHT;
+
     const cursorPxExtents = cursorPos.column * this.charWidth;
-    
+
     // Vertical adjust
-    if (cursorTop < this.scrollTop) {
-      this.scrollTop = cursorTop;
-    } else if (cursorBottom > this.scrollTop + this.viewportHeight) {
-      this.scrollTop = cursorBottom - this.viewportHeight;
+    if (cursorScrollTop < this.scrollTop) {
+      this.scrollTop = cursorScrollTop;
+    } else if (cursorScrollBottom > this.scrollTop + this.viewportHeight) {
+      this.scrollTop = cursorScrollBottom - this.viewportHeight;
     }
 
     // Horizontal adjust
     // Add visual padding for cursor to ensure we see slightly past it
-    const PADDING_PX = 4 * this.charWidth; 
+    const PADDING_PX = 4 * this.charWidth;
     if (cursorPxExtents < this.scrollLeft) {
       this.scrollLeft = Math.max(0, cursorPxExtents - PADDING_PX);
     } else if (cursorPxExtents > this.scrollLeft + this.viewportWidth - PADDING_PX) {

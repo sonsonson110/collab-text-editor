@@ -1,6 +1,7 @@
 import { useCollaborativeEditor } from "@/hooks/useCollaborativeEditor";
 import { EditorView } from "@/ui/EditorView";
 import { UserPresenceBar } from "@/ui/components";
+import { LINE_HEIGHT } from "@/constants";
 
 /**
  * Template layout for a collaborative editing session.
@@ -26,6 +27,11 @@ export function CollaborationLayout() {
       </div>
     );
   }
+
+  // Reserve space above line 0 equal to a remote-cursor label height so that
+  // labels on line 0 are never clipped. Increase this constant when adding
+  // top chrome (e.g. search bar, replace box) to the collaboration layout.
+  viewModel.setTopPadding(LINE_HEIGHT);
 
   return (
     <div className="flex flex-col h-full">

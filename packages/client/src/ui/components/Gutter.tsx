@@ -1,22 +1,22 @@
-import { LINE_HEIGHT } from "@/constants";
 import type { ViewLine } from "@/view/types";
 
 interface Props {
   lines: ViewLine[];
-  scrollTop: number;
+  /** Vertical translation offset in pixels. */
+  offsetY: number;
   width: number | string;
   onLineNumberMouseDown: (e: React.MouseEvent, line: number) => void;
 }
 
 export function Gutter({
   lines,
-  scrollTop,
+  offsetY,
   width,
   onLineNumberMouseDown,
 }: Props) {
   return (
     <div className="gutter" style={{ width }}>
-      <div style={{ transform: `translateY(-${scrollTop % LINE_HEIGHT}px)` }}>
+      <div style={{ transform: `translateY(${offsetY}px)` }}>
         {lines.map((line) => (
           <div
             key={line.lineNumber}

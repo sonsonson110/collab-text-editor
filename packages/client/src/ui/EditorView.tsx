@@ -42,6 +42,7 @@ export function EditorView({ viewModel }: Props) {
   const [viewportWidth, setViewportWidth] = useState(
     viewModel.getViewportWidth(),
   );
+  const [topPadding, setTopPadding] = useState(viewModel.getTopPadding());
   const [isMouseInEditor, setIsMouseInEditor] = useState(false);
   const [selectionRects, setSelectionRects] = useState(
     buildSelectionRects(
@@ -87,7 +88,20 @@ export function EditorView({ viewModel }: Props) {
       const rect = container.getBoundingClientRect();
 
       const relativeY = clientY - rect.top;
-      const absoluteY = viewModel.getScrollTop() + relativeY;
+      // Subtract topPadding to convert from scroll-area coordinates to
+      // document line coordinates (line 0 starts at topPadding in scroll space).
+      const absoluteY = viewModel.getScrollTop() - viewModel.getTopPadding() + relativeY;
+
+      // Click is inside the top padding zone — no document line maps there.
+      if (absoluteY < 0) {
+        return null;
+      }
+
+      // Click is below all document lines — empty space at the bottom.
+      if (absoluteY >= viewModel.getLineCount() * LINE_HEIGHT) {
+        return null;
+      }
+
       const clickedAbsoluteLine = Math.floor(absoluteY / LINE_HEIGHT);
       const clampedLine = Math.max(
         0,
@@ -226,6 +240,10 @@ export function EditorView({ viewModel }: Props) {
       return;
     }
 
+    // Always prevent browser text selection within the editor area,
+    // including clicks in the top padding zone or empty space below content.
+    e.preventDefault();
+
     const position = resolvePosition(e.clientX, e.clientY);
     if (!position) {
       return;
@@ -308,8 +326,6 @@ export function EditorView({ viewModel }: Props) {
     window.addEventListener("mouseup", handleWindowMouseUp);
 
     containerRef.current?.focus();
-    // Prevent the browser from triggering its own text selection UI
-    e.preventDefault();
   };
 
   const handleLineNumberMouseDown = useCallback(
@@ -362,6 +378,7 @@ export function EditorView({ viewModel }: Props) {
     setScrollWidth(viewModel.getScrollWidth());
     setViewportHeight(viewModel.getViewportHeight());
     setViewportWidth(viewModel.getViewportWidth());
+    setTopPadding(viewModel.getTopPadding());
   }, [viewModel]);
 
   const handleWheel: WheelEventHandler<HTMLDivElement> = useCallback(
@@ -420,6 +437,8 @@ export function EditorView({ viewModel }: Props) {
     return viewModel.subscribe(sync);
   }, [viewModel, sync]);
 
+  const offsetY = topPadding + viewModel.getViewportStart() * LINE_HEIGHT - scrollTop;
+
   return (
     <div
       ref={containerRef}
@@ -432,7 +451,7 @@ export function EditorView({ viewModel }: Props) {
     >
       <Gutter
         lines={lines}
-        scrollTop={scrollTop}
+        offsetY={offsetY}
         width={`${gutterWidthCh}ch`}
         onLineNumberMouseDown={handleLineNumberMouseDown}
       />
@@ -445,7 +464,11 @@ export function EditorView({ viewModel }: Props) {
         <div
           style={{
             position: "relative",
-            transform: `translate3d(-${scrollLeft}px, -${scrollTop % LINE_HEIGHT}px, 0)`,
+            // Generalised Y offset: topPadding shifts all content down by the
+            // reserved space; viewportStart * LINE_HEIGHT accounts for the first
+            // rendered line; scrollTop brings it into the viewport.
+            // When topPadding === 0 this reduces to -(scrollTop % LINE_HEIGHT).
+            transform: `translate3d(-${scrollLeft}px, ${offsetY}px, 0)`,
           }}
         >
           <Selection rects={selectionRects} />

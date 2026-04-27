@@ -63,12 +63,14 @@ describe("ViewModel", () => {
     });
 
     it("clamps to max possible start line", () => {
-      // 30 lines total, viewport shows 15 lines. Max start is 15.
+      // 30 lines total, viewport shows 15 lines.
+      // scrollHeight = 0 + 30*LINE_HEIGHT + LINE_HEIGHT = 31*LINE_HEIGHT
+      // maxScrollTop = 31*LINE_HEIGHT - 15*LINE_HEIGHT = 16*LINE_HEIGHT
       const vm = makeVM(makeStub({ lineCount: 30 }));
       vm.setViewport(800, 15 * LINE_HEIGHT, CHAR_WIDTH);
       vm.setScrollPosition(0, 20 * LINE_HEIGHT);
-      expect(vm.getViewportStart()).toBe(15);
-      expect(vm.getScrollTop()).toBe(15 * LINE_HEIGHT);
+      expect(vm.getViewportStart()).toBe(16);
+      expect(vm.getScrollTop()).toBe(16 * LINE_HEIGHT);
     });
   });
 
@@ -119,10 +121,11 @@ describe("ViewModel", () => {
     });
 
     it("clamps at the last possible scroll top", () => {
+      // scrollHeight = 0 + 10*LINE_HEIGHT + LINE_HEIGHT = 11*LINE_HEIGHT
+      // maxScrollTop = 11*LINE_HEIGHT - 5*LINE_HEIGHT = 6*LINE_HEIGHT
       const vm = makeVM(makeStub({ lineCount: 10 }), 0, 5);
       vm.scrollBy(0, 100 * LINE_HEIGHT);
-      // max start = 10 - 5 = 5
-      expect(vm.getScrollTop()).toBe(5 * LINE_HEIGHT);
+      expect(vm.getScrollTop()).toBe(6 * LINE_HEIGHT);
     });
 
     it("does not scroll past the end when document smaller than viewport", () => {
@@ -288,13 +291,15 @@ describe("ViewModel", () => {
 
   describe("Viewport clamping upon resize", () => {
     it("dynamically adjusts scroll bounds when viewport grows", () => {
+      // scrollHeight = 0 + 20*LINE_HEIGHT + LINE_HEIGHT = 21*LINE_HEIGHT
+      // With 5-line viewport: maxScrollTop = 21*LINE_HEIGHT - 5*LINE_HEIGHT = 16*LINE_HEIGHT
       const vm = makeVM(makeStub({ lineCount: 20 }), 0, 5);
-      vm.scrollBy(0, 15 * LINE_HEIGHT); // Max bounds (scrolls to line 15)
-      expect(vm.getScrollTop()).toBe(15 * LINE_HEIGHT);
+      vm.scrollBy(0, 100 * LINE_HEIGHT);
+      expect(vm.getScrollTop()).toBe(16 * LINE_HEIGHT);
 
-      // Expand window to show 10 lines. New max scrollTop is 10 * LINE_HEIGHT.
+      // Expand window to show 10 lines. New max = 21*LINE_HEIGHT - 10*LINE_HEIGHT = 11*LINE_HEIGHT.
       vm.setViewport(800, 10 * LINE_HEIGHT, CHAR_WIDTH);
-      expect(vm.getScrollTop()).toBe(10 * LINE_HEIGHT);
+      expect(vm.getScrollTop()).toBe(11 * LINE_HEIGHT);
     });
 
     it("automatically re-clamps scroll position during content shrinkage", () => {
@@ -398,6 +403,58 @@ describe("ViewModel", () => {
       ]);
       const result = vm.getRemoteCursorsViewportPositions();
       expect(result).toHaveLength(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // topPadding
+  // -------------------------------------------------------------------------
+
+  describe("topPadding", () => {
+    it("getScrollHeight includes topPadding and one LINE_HEIGHT of bottom padding", () => {
+      const vm = makeVM(makeStub({ lineCount: 10 }), 0, 5);
+      // Default: 0 + 10*LINE_HEIGHT + LINE_HEIGHT
+      expect(vm.getScrollHeight()).toBe(11 * LINE_HEIGHT);
+
+      vm.setTopPadding(LINE_HEIGHT);
+      // 1*LINE_HEIGHT + 10*LINE_HEIGHT + LINE_HEIGHT
+      expect(vm.getScrollHeight()).toBe(12 * LINE_HEIGHT);
+    });
+
+    it("getViewportStart accounts for topPadding offset", () => {
+      const vm = makeVM(makeStub({ lineCount: 20 }), 0, 5);
+      vm.setTopPadding(LINE_HEIGHT);
+      // scrollTop=0 → (0 - LINE_HEIGHT) clamped to 0 → line 0
+      expect(vm.getViewportStart()).toBe(0);
+
+      // scrollTop = LINE_HEIGHT → (LINE_HEIGHT - LINE_HEIGHT)/LINE_HEIGHT = 0 → still line 0
+      vm.setScrollPosition(0, LINE_HEIGHT);
+      expect(vm.getViewportStart()).toBe(0);
+
+      // scrollTop = 2*LINE_HEIGHT → (2*LINE_HEIGHT - LINE_HEIGHT)/LINE_HEIGHT = 1 → line 1
+      vm.setScrollPosition(0, 2 * LINE_HEIGHT);
+      expect(vm.getViewportStart()).toBe(1);
+    });
+
+    it("scrollToCursor scrolls to topPadding + cursorLine*LINE_HEIGHT when cursor is above viewport", () => {
+      const vm = makeVM(makeStub({ lineCount: 20, cursorLine: 0 }), 5, 5);
+      vm.setTopPadding(LINE_HEIGHT);
+      // Effective cursor scroll-area top = LINE_HEIGHT + 0 = LINE_HEIGHT
+      vm.scrollToCursor();
+      expect(vm.getScrollTop()).toBe(LINE_HEIGHT);
+    });
+
+    it("getTopPadding returns the value set by setTopPadding", () => {
+      const vm = makeVM(makeStub({ lineCount: 10 }), 0, 5);
+      expect(vm.getTopPadding()).toBe(0);
+      vm.setTopPadding(40);
+      expect(vm.getTopPadding()).toBe(40);
+    });
+
+    it("setTopPadding clamps negative values to 0", () => {
+      const vm = makeVM(makeStub({ lineCount: 10 }), 0, 5);
+      vm.setTopPadding(-50);
+      expect(vm.getTopPadding()).toBe(0);
     });
   });
 });
