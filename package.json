@@ -1,7 +1,9 @@
 {
   "name": "educational-text-editor",
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "dev": "npm run dev -w @myapp/client",
     "dev:server": "npm run dev -w @myapp/server",
@@ -9,7 +11,7 @@
     "test": "npm run test --workspaces --if-present",
     "test:run": "npm run test:run --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "docker:up": "docker-compose up --build",
-    "docker:down": "docker-compose down"
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
   }
 }
