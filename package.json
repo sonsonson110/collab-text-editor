@@ -5,6 +5,7 @@
     "packages/*"
   ],
   "scripts": {
+    "dev:all": "concurrently --names \"client,server\" --prefix-colors \"cyan,magenta\" \"npm run dev\" \"npm run dev:server\"",
     "dev": "npm run dev -w @myapp/client",
     "dev:server": "npm run dev -w @myapp/server",
     "build": "npm run build -w @myapp/client",
@@ -13,5 +14,8 @@
     "lint": "npm run lint --workspaces --if-present",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }
