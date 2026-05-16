@@ -64,18 +64,18 @@
 
 ### Tasks
 
-- [ ] Create `shared/security/JwtAuthenticationFilter.java` extending `OncePerRequestFilter`:
+- [x] Create `shared/security/JwtAuthenticationFilter.java` extending `OncePerRequestFilter`:
   - Read `Authorization: Bearer <token>` header.
   - Call `JwtService.validateToken(token)` — if invalid/expired, do nothing (Spring Security will reject downstream).
   - On success, build a `UsernamePasswordAuthenticationToken` with `sub` (userId or guestId) as the principal name and set it in `SecurityContextHolder`.
   - Do **not** hit the database.
-- [ ] Remove `BearerTokenFilter.java` and its `FilterRegistrationBean` from `SecurityConfig`.
-- [ ] Register `JwtAuthenticationFilter` in `SecurityConfig` at the same position:
+- [x] Remove `BearerTokenFilter.java` and its `FilterRegistrationBean` from `SecurityConfig`.
+- [x] Register `JwtAuthenticationFilter` in `SecurityConfig` at the same position:
   ```java
   .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
   ```
-- [ ] Add a Flyway migration `V3__remove_session_token_from_users.sql` to drop the now-unused `session_token` column and index.
-- [ ] Remove the `sessionToken` field from `User.java` and `findBySessionToken` from `UserRepository.java`.
+- [x] Add a Flyway migration `V3__remove_session_token_from_users.sql` to drop the now-unused `session_token` column and index.
+- [x] Remove the `sessionToken` field from `User.java` and `findBySessionToken` from `UserRepository.java`.
 
 ### Spring Concepts
 
@@ -95,11 +95,11 @@
 
 ### Tasks
 
-- [ ] Inject `JwtService` into `AuthService`.
-- [ ] In `register`: replace `UUID.randomUUID().toString()` with `jwtService.generateToken(user)`.
-- [ ] In `login`: replace the UUID token with `jwtService.generateToken(user)`.
-- [ ] Since `login` no longer writes to the DB (no session token to persist), revert it to `@Transactional(readOnly = true)`.
-- [ ] Update existing `AuthControllerTest` helper `registerAndGetToken` — the token returned is now a JWT string, but the helper doesn't need to change since it just passes the token through.
+- [x] Inject `JwtService` into `AuthService`.
+- [x] In `register`: replace `UUID.randomUUID().toString()` with `jwtService.generateToken(user)`.
+- [x] In `login`: replace the UUID token with `jwtService.generateToken(user)`.
+- [x] Since `login` no longer writes to the DB (no session token to persist), revert it to `@Transactional(readOnly = true)`.
+- [x] Update existing `AuthControllerTest` helper `registerAndGetToken` — the token returned is now a JWT string, but the helper doesn't need to change since it just passes the token through.
 
 ### Spring Concepts
 
@@ -116,13 +116,13 @@
 
 ### Tasks
 
-- [ ] Create `auth/dto/GuestTokenResponse.java` — `token`, `guestId`.
-- [ ] Add `POST /api/auth/guest` endpoint to `AuthController`:
+- [x] Create `auth/dto/GuestTokenResponse.java` — `token`, `guestId`.
+- [x] Add `POST /api/auth/guest` endpoint to `AuthController`:
   - Generates a random `guestId` (UUID string).
   - Calls `jwtService.generateGuestToken(guestId)`.
   - Returns `200 OK` + `GuestTokenResponse`.
   - This endpoint must be **public** — add it to the `permitAll` list in `SecurityConfig`.
-- [ ] Add `POST /api/auth/guest` to the `permitAll` list in `SecurityConfig`.
+- [x] Add `POST /api/auth/guest` to the `permitAll` list in `SecurityConfig`.
 
 ### Guest Token Claims Shape
 

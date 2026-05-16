@@ -1,6 +1,7 @@
 package com.collab.api.auth;
 
 import com.collab.api.auth.dto.AuthResponse;
+import com.collab.api.auth.dto.GuestTokenResponse;
 import com.collab.api.auth.dto.LoginRequest;
 import com.collab.api.auth.dto.RegisterRequest;
 import com.collab.api.auth.event.UserRegisteredEvent;
@@ -13,6 +14,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.UUID;
 
 /**
  * Handles user registration and login for the password-based auth flow.
@@ -98,5 +101,20 @@ public class AuthService {
         String token = jwtService.generateToken(user);
 
         return new AuthResponse(token, user.getId(), user.getDisplayName());
+    }
+
+    /**
+     * Issues a short-lived guest JWT for an anonymous session.
+     *
+     * <p>No user account or credentials are required. The generated guest ID is
+     * prefixed with {@code "guest-"} to distinguish it from user UUIDs in logs
+     * and the Node sync-server's awareness state.
+     *
+     * @return A {@link GuestTokenResponse} containing the signed JWT and the guest ID.
+     */
+    public GuestTokenResponse issueGuestToken() {
+        String guestId = "guest-" + UUID.randomUUID();
+        String token = jwtService.generateGuestToken(guestId);
+        return new GuestTokenResponse(token, guestId);
     }
 }
