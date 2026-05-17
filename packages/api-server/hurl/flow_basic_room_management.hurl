@@ -7,7 +7,7 @@ POST {{host}}/api/auth/register
 {
     "email": "e2e-user-{{suffix}}@example.com",
     "password": "securepassword",
-    "name": "E2E User"
+    "displayName": "E2E User"
 }
 HTTP 201
 

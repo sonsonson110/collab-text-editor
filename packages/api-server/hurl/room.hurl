@@ -5,7 +5,7 @@ POST {{host}}/api/auth/register
 {
     "email": "test-room-owner-{{suffix}}@example.com",
     "password": "password123",
-    "name": "Room Owner"
+    "displayName": "Room Owner"
 }
 HTTP 201
 [Captures]

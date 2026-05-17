@@ -31,7 +31,7 @@ POST {{host}}/api/auth/register
 {
     "email": "test-user-{{suffix}}@example.com",
     "password": "password123",
-    "name": "Tester"
+    "displayName": "Tester"
 }
 HTTP 201
 ```

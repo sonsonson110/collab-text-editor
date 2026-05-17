@@ -15,7 +15,7 @@ if ! command -v hurl &> /dev/null; then
 fi
 
 # Define the host variable (default to localhost:8080)
-HOST="${API_HOST:-http://localhost:8080}"
+HOST="${API_HOST:-http://localhost:8081}"
 echo "Targeting API at: $HOST"
 
 # Generate a random suffix for email addresses to avoid collisions during repeated tests

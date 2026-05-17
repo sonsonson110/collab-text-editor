@@ -5,32 +5,32 @@ POST {{host}}/api/auth/register
 {
     "email": "test-auth-register-{{suffix}}@example.com",
     "password": "password123",
-    "name": "Auth Tester"
+    "displayName": "Auth Tester"
 }
 HTTP 201
 [Asserts]
 jsonpath "$.token" != null
-jsonpath "$.user.email" == "test-auth-register-{{suffix}}@example.com"
-jsonpath "$.user.name" == "Auth Tester"
+jsonpath "$.userId" != null
+jsonpath "$.displayName" == "Auth Tester"
 
 # Validation failure: Register with bad email format
 POST {{host}}/api/auth/register
 {
     "email": "not-an-email",
     "password": "password123",
-    "name": "Auth Tester"
+    "displayName": "Auth Tester"
 }
 HTTP 400
 [Asserts]
 jsonpath "$.status" == 400
-jsonpath "$.message" == "Validation Failed"
+jsonpath "$.message" == "Validation failed"
 
 # Validation failure: Register with blank password
 POST {{host}}/api/auth/register
 {
     "email": "test-auth-bad-{{suffix}}@example.com",
     "password": "",
-    "name": "Auth Tester"
+    "displayName": "Auth Tester"
 }
 HTTP 400
 
@@ -40,7 +40,7 @@ POST {{host}}/api/auth/register
 {
     "email": "test-login-{{suffix}}@example.com",
     "password": "password123",
-    "name": "Login Tester"
+    "displayName": "Login Tester"
 }
 HTTP 201
 
@@ -53,7 +53,7 @@ POST {{host}}/api/auth/login
 HTTP 200
 [Asserts]
 jsonpath "$.token" != null
-jsonpath "$.user.email" == "test-login-{{suffix}}@example.com"
+jsonpath "$.userId" != null
 
 # Unauthorized: Wrong password
 POST {{host}}/api/auth/login
