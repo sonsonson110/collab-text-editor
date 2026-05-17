@@ -29,8 +29,8 @@ jobs:
           cd packages/api-server
           ./mvnw spring-boot:run &
           echo "Waiting for API server to start..."
-          # Wait up to 60 seconds for the server to bind to port 8080
-          timeout 60 bash -c 'until nc -z localhost 8080; do sleep 1; done'
+          # Wait up to 60 seconds for the server to bind to port 8081
+          timeout 60 bash -c 'until nc -z localhost 8081; do sleep 1; done'
           echo "API Server is up!"
 
       - name: Install Hurl
