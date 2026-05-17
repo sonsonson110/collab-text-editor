@@ -6,9 +6,11 @@ echo "Running Spring Boot API Hurl Tests..."
 # Check if hurl is installed
 if ! command -v hurl &> /dev/null; then
     echo "Error: hurl could not be found."
-    echo "Please install Hurl (https://hurl.dev/docs/installation.html)"
-    echo "For example, on macOS: brew install hurl"
-    echo "On Linux: curl -sSL https://hurl.dev/install.sh | bash"
+    echo "Please install Hurl: https://hurl.dev/docs/installation.html"
+    echo "For Debian/Ubuntu:"
+    echo "  VERSION=8.0.0"
+    echo "  curl --location --remote-name https://github.com/Orange-OpenSource/hurl/releases/download/\${VERSION}/hurl_\${VERSION}_amd64.deb"
+    echo "  sudo apt install ./hurl_\${VERSION}_amd64.deb"
     exit 1
 fi
 

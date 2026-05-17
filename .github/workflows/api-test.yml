@@ -34,9 +34,15 @@ jobs:
           echo "API Server is up!"
 
       - name: Install Hurl
+        # Official installation method for Debian/Ubuntu:
+        # https://hurl.dev/docs/installation.html#debian-ubuntu
         run: |
-          curl -sSL https://hurl.dev/install.sh | bash
-          echo "$HOME/.hurl/bin" >> $GITHUB_PATH
+          VERSION=8.0.0
+          curl --silent --location --remote-name \
+            https://github.com/Orange-OpenSource/hurl/releases/download/${VERSION}/hurl_${VERSION}_amd64.deb
+          sudo apt install -y ./hurl_${VERSION}_amd64.deb
+          rm ./hurl_${VERSION}_amd64.deb
+          hurl --version
 
       - name: Run API Tests
         run: npm run test:api
