@@ -8,12 +8,14 @@
     "start": "tsx src/index.ts"
   },
   "dependencies": {
+    "jsonwebtoken": "^9.0.3",
     "lib0": "^0.2.117",
     "ws": "^8.18.3",
     "y-protocols": "^1.0.7",
     "yjs": "^13.6.30"
   },
   "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.14",
     "tsx": "^4.19.4",

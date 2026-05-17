@@ -10,6 +10,12 @@
  * Protocol message types:
  *   0 — Sync      (SyncStep1, SyncStep2, Update)
  *   1 — Awareness (remote cursor / presence state)
+ *
+ * Authentication (Phase 2):
+ *   Clients must supply a signed JWT in the `?token=<jwt>` query parameter of
+ *   the WebSocket upgrade URL.  The token is verified locally (no Spring call)
+ *   via {@link verifyToken}.  Invalid or missing tokens cause the upgrade to be
+ *   rejected with WebSocket close code 4401 before the connection is opened.
  */
 
 import { WebSocketServer, WebSocket } from "ws";
@@ -19,9 +25,27 @@ import * as awarenessProtocol from "y-protocols/awareness";
 import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import type { IncomingMessage } from "node:http";
+import { verifyToken, type VerifiedClaims } from "./auth/jwtVerifier.js";
 
 const MSG_SYNC = 0;
 const MSG_AWARENESS = 1;
+
+/**
+ * Close code sent to clients whose JWT is missing or invalid.
+ * 4401 is in the application-reserved range (4000–4999).
+ */
+const WS_CLOSE_UNAUTHORIZED = 4401;
+
+// ---------------------------------------------------------------------------
+// Per-connection identity store
+// ---------------------------------------------------------------------------
+
+/**
+ * Maps each authenticated WebSocket to the claims extracted from its JWT.
+ * Using a WeakMap avoids any changes to the WebSocket type while allowing
+ * automatic garbage collection when a socket is closed.
+ */
+const connectionClaims = new WeakMap<WebSocket, VerifiedClaims>();
 
 // ---------------------------------------------------------------------------
 // Room management
@@ -104,9 +128,19 @@ function getOrCreateRoom(name: string): Room {
 
 function handleConnection(ws: WebSocket, req: IncomingMessage): void {
   // Room name comes from the URL path: ws://host:port/my-room → "my-room"
-  const roomName = (req.url ?? "/").replace(/^\//, "") || "default";
+  const roomName = (req.url ?? "/").replace(/^\?.*$/, "").replace(/^\//, "") || "default";
   const room = getOrCreateRoom(roomName);
   room.connections.add(ws);
+
+  // Retrieve the identity attached during the upgrade handshake.
+  const claims = connectionClaims.get(ws)!; // guaranteed by verifyClient
+
+  // ── Seed Yjs awareness with the authenticated identity ──────────────────
+  // This is the Phase 4 foundation: the editor UI reads `userId` and `role`
+  // from the peer's awareness state to determine permissions and display names
+  // without any additional round-trip to the server.
+  room.awareness.setLocalStateField("userId", claims.userId);
+  room.awareness.setLocalStateField("role", claims.role);
 
   // ── Initiate sync handshake with the new client ──────────────────────────
   // Send SyncStep1 (our state vector) so the client can reply with the diff.
@@ -191,8 +225,59 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
 // ---------------------------------------------------------------------------
 
 const PORT = parseInt(process.env.PORT ?? "1234", 10);
-const wss = new WebSocketServer({ port: PORT });
 
-wss.on("connection", handleConnection);
+const wss = new WebSocketServer({
+  port: PORT,
+
+  /**
+   * Runs during the HTTP upgrade handshake — before the WebSocket is opened.
+   * Rejects connections whose JWT is missing or invalid with close code 4401.
+   *
+   * On success, the verified claims are stored in {@link connectionClaims} so
+   * {@link handleConnection} can retrieve them without re-parsing the token.
+   */
+  verifyClient(
+    info: { req: IncomingMessage },
+    callback: (pass: boolean, code?: number, message?: string) => void,
+  ) {
+    const url = new URL(
+      info.req.url ?? "/",
+      `http://localhost:${PORT}`,
+    );
+    const token = url.searchParams.get("token");
+
+    if (!token) {
+      callback(false, WS_CLOSE_UNAUTHORIZED, "Missing token");
+      return;
+    }
+
+    try {
+      const claims = verifyToken(token);
+      // Temporarily store claims keyed by the request object; we'll move them
+      // to the WebSocket instance in the 'connection' event below.
+      (info.req as IncomingMessage & { _claims?: VerifiedClaims })._claims =
+        claims;
+      callback(true);
+    } catch {
+      callback(false, WS_CLOSE_UNAUTHORIZED, "Invalid or expired token");
+    }
+  },
+});
+
+/**
+ * Transfer claims from the upgrade request to the WebSocket instance so that
+ * {@link handleConnection} can access them via the type-safe {@link connectionClaims} map.
+ */
+wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
+  const claims = (req as IncomingMessage & { _claims?: VerifiedClaims })
+    ._claims;
+  if (!claims) {
+    // Should never happen — verifyClient already rejected invalid connections.
+    ws.close(WS_CLOSE_UNAUTHORIZED, "Unauthorized");
+    return;
+  }
+  connectionClaims.set(ws, claims);
+  handleConnection(ws, req);
+});
 
 console.log(`Collaboration server running on ws://localhost:${PORT}`);

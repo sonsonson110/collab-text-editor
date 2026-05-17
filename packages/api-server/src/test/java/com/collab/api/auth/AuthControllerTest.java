@@ -2,7 +2,9 @@ package com.collab.api.auth;
 
 import com.collab.api.auth.dto.LoginRequest;
 import com.collab.api.auth.dto.RegisterRequest;
+import com.collab.api.shared.security.JwtService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.jsonwebtoken.Claims;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -10,6 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -30,11 +33,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class AuthControllerTest {
 
+    /** Regex matching the compact three-part JWT format: header.payload.signature. */
+    private static final String JWT_PATTERN =
+            "^[A-Za-z0-9-_]+\\.[A-Za-z0-9-_]+\\.[A-Za-z0-9-_.+/=]*$";
+
     @Autowired
     MockMvc mockMvc;
 
     @Autowired
     ObjectMapper json;
+
+    @Autowired
+    JwtService jwtService;
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
@@ -65,7 +75,7 @@ class AuthControllerTest {
                         .contentType(APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.token").isNotEmpty())
+                .andExpect(jsonPath("$.token").value(org.hamcrest.Matchers.matchesPattern(JWT_PATTERN)))
                 .andExpect(jsonPath("$.userId").isNotEmpty())
                 .andExpect(jsonPath("$.displayName").value("Alice"));
     }
@@ -127,7 +137,7 @@ class AuthControllerTest {
                         .contentType(APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.token").isNotEmpty())
+                .andExpect(jsonPath("$.token").value(org.hamcrest.Matchers.matchesPattern(JWT_PATTERN)))
                 .andExpect(jsonPath("$.displayName").value("Test User"));
     }
 
@@ -155,5 +165,35 @@ class AuthControllerTest {
                         .content(body))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+    }
+
+    // ── guest token ───────────────────────────────────────────────────────────
+
+    /**
+     * Auth guard is not applicable here — the {@code /api/auth/guest} endpoint
+     * is intentionally public (no {@code Authorization} header required).
+     */
+    @Test
+    void getGuestToken_happyPath_returnsOkWithToken() throws Exception {
+        mockMvc.perform(post("/api/auth/guest"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").value(org.hamcrest.Matchers.matchesPattern(JWT_PATTERN)))
+                .andExpect(jsonPath("$.guestId").isNotEmpty());
+    }
+
+    @Test
+    void getGuestToken_tokenIsJwtFormat_containsGuestRole() throws Exception {
+        var result = mockMvc.perform(post("/api/auth/guest"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        var responseBody = json.readTree(result.getResponse().getContentAsString());
+        var token = responseBody.get("token").asText();
+        var guestId = responseBody.get("guestId").asText();
+
+        // Validate the token using the same JwtService that issued it
+        Claims claims = jwtService.validateToken(token);
+        assertThat(jwtService.extractRole(claims)).isEqualTo(JwtService.ROLE_GUEST);
+        assertThat(jwtService.extractSubject(claims)).isEqualTo(guestId);
     }
 }

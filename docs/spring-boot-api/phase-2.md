@@ -150,20 +150,20 @@
 
 ### Tasks
 
-- [ ] Add the shared JWT secret to the Node server's environment (`.env` / `docker-compose`):
+- [x] Add the shared JWT secret to the Node server's environment (`.env` / `docker-compose`):
   ```env
   JWT_SECRET=<same base64 key as Spring>
   ```
-- [ ] Install `jsonwebtoken` in the sync-server package:
+- [x] Install `jsonwebtoken` in the sync-server package:
   ```bash
   npm install jsonwebtoken
   ```
-- [ ] Create `packages/sync-server/src/auth/jwtVerifier.ts`:
+- [x] Create `packages/sync-server/src/auth/jwtVerifier.ts`:
   - `verifyToken(token: string): { sub: string, role: string }` — validates signature + expiry, throws on failure.
-- [ ] In the WebSocket upgrade handler, read the token from the URL query param (`?token=<jwt>`) or `Authorization` header:
+- [x] In the WebSocket upgrade handler, read the token from the URL query param (`?token=<jwt>`) or `Authorization` header:
   - If valid: allow the connection, attach `{ userId, role }` to the socket context.
   - If invalid or missing: close the connection with code `4401` (custom unauthorized code).
-- [ ] Pass `role` from the JWT claims into the Yjs awareness fields so the editor UI can reflect permissions immediately (pre-Phase 4 foundation).
+- [x] Pass `role` from the JWT claims into the Yjs awareness fields so the editor UI can reflect permissions immediately (pre-Phase 4 foundation).
 
 ### Architecture Note
 
@@ -193,18 +193,18 @@ Node **never** calls Spring to validate a token. This is the key stateless benef
 
 ### Tasks
 
-- [ ] **Update `AuthControllerTest`** — all existing tests still pass since the token shape is opaque to the test helper. Verify explicitly:
+- [x] **Update `AuthControllerTest`** — all existing tests still pass since the token shape is opaque to the test helper. Verify explicitly:
   - `register_happyPath_returnsCreatedWithToken`: assert `$.token` matches JWT format (`^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_.+/=]*$`).
   - `login_happyPath_returnsOkWithToken`: same assertion.
-- [ ] **Add guest token tests to `AuthControllerTest`**:
+- [x] **Add guest token tests to `AuthControllerTest`**:
   - `getGuestToken_happyPath_returnsOkWithToken` — no auth required, `200 OK`, token + guestId in body.
-  - `getGuestToken_tokenIsJwtFormat` — assert returned token is parseable and contains `role=GUEST`.
-- [ ] **Add `JwtServiceTest.java`** (plain JUnit, no Spring context):
+  - `getGuestToken_tokenIsJwtFormat_containsGuestRole` — assert returned token is parseable and contains `role=GUEST`.
+- [x] **Add `JwtServiceTest.java`** (plain JUnit, no Spring context):
   - `generateToken_validUser_returnsSignedJwt`
   - `validateToken_expiredToken_throwsApiException`
   - `validateToken_tamperedSignature_throwsApiException`
   - `generateGuestToken_returnsGuestRole`
-- [ ] **Update `RoomControllerTest`** — the `registerAndGetToken` helper now returns a real JWT; the tests should still pass without changes since Bearer auth works the same way.
+- [x] **Update `RoomControllerTest`** — the `registerAndGetToken` helper now returns a real JWT; the tests still pass without changes since Bearer auth works the same way.
 
 ### Spring Testing Concepts
 
@@ -218,12 +218,12 @@ Node **never** calls Spring to validate a token. This is the key stateless benef
 
 ## Definition of Done for Phase 2
 
-- [ ] `POST /api/auth/register` and `POST /api/auth/login` return signed JWTs (not UUID strings).
-- [ ] `POST /api/auth/guest` returns a short-lived guest JWT with `role=GUEST`, no account required.
-- [ ] The `session_token` column is removed from the database (V3 migration applied).
-- [ ] Room endpoints authenticate via JWT with no database lookup per request.
-- [ ] Node sync-server rejects WebSocket connections with invalid/missing JWTs (close code `4401`).
-- [ ] Node sync-server accepts connections with valid JWTs and exposes `{ userId, role }` on the socket context.
-- [ ] All existing integration tests still pass.
-- [ ] New `JwtServiceTest` unit tests pass (no Spring context, fast).
-- [ ] JWT secret is read from environment — not hardcoded anywhere in committed source.
+- [x] `POST /api/auth/register` and `POST /api/auth/login` return signed JWTs (not UUID strings).
+- [x] `POST /api/auth/guest` returns a short-lived guest JWT with `role=GUEST`, no account required.
+- [x] The `session_token` column is removed from the database (V3 migration applied).
+- [x] Room endpoints authenticate via JWT with no database lookup per request.
+- [x] Node sync-server rejects WebSocket connections with invalid/missing JWTs (close code `4401`).
+- [x] Node sync-server accepts connections with valid JWTs and exposes `{ userId, role }` on the socket context.
+- [x] All existing integration tests still pass.
+- [x] New `JwtServiceTest` unit tests pass (no Spring context, fast).
+- [x] JWT secret is read from environment — not hardcoded anywhere in committed source.
