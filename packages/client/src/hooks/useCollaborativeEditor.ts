@@ -122,7 +122,10 @@ export function useCollaborativeEditor() {
       // reservation (rather than removing the key) lets other reservations
       // still contribute via max().
       const hasRemoteOnLine0 = cursors.some((c) => c.head.line === 0);
-      vm.reserveTopPadding(TOP_PADDING_RESERVATION_KEYS.REMOTE_CURSOR_LINE_0, hasRemoteOnLine0 ? LINE_HEIGHT : 0);
+      vm.reserveTopPadding(
+        TOP_PADDING_RESERVATION_KEYS.REMOTE_CURSOR_LINE_0,
+        hasRemoteOnLine0 ? LINE_HEIGHT : 0,
+      );
 
       setUsers(connectedUsers);
     });
