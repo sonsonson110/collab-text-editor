@@ -150,7 +150,7 @@
 
 ### Tasks
 
-- [x] Add the shared JWT secret to the Node server's environment (`.env` / `docker-compose`):
+- [x] Add the shared JWT secret to the Node server's environment (`docker-compose.yml` / `docker-stack.yml`):
   ```env
   JWT_SECRET=<same base64 key as Spring>
   ```

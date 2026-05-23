@@ -1,8 +1,8 @@
-version: '3.8'
+version: "3.8"
 
 services:
   postgres:
-    image: 'postgres:16'
+    image: "postgres:16"
     environment:
       - POSTGRES_DB=collab-editor
       - POSTGRES_PASSWORD=password
@@ -25,6 +25,8 @@ services:
       - SPRING_DATASOURCE_PASSWORD=password
       # Disable the local-dev Docker Compose integration at runtime
       - SPRING_DOCKER_COMPOSE_ENABLED=false
+      # Must match JWT_SECRET in sync-server
+      - APP_JWT_SECRET=XtVWcilMyRXDU/NTpTCsZp/V5yqM8Cv8BXNwnZ8fFyY=
     depends_on:
       postgres:
         condition: service_healthy
@@ -36,6 +38,8 @@ services:
       dockerfile: packages/sync-server/Dockerfile
     environment:
       - PORT=1234
+      # Must match APP_JWT_SECRET in api-server
+      - JWT_SECRET=XtVWcilMyRXDU/NTpTCsZp/V5yqM8Cv8BXNwnZ8fFyY=
     restart: unless-stopped
 
   client:

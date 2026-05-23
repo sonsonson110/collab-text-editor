@@ -15,12 +15,53 @@ Live demo: <https://collab-text-editor.pson02.io.vn/>
 
 ## Getting Started
 
+### Local Development
+
+1. **Install Dependencies**:
+   ```bash
+   npm install
+   ```
+
+2. **Run Backend (API Server)**:
+   The Spring Boot backend uses Docker Compose integration to automatically start PostgreSQL. Run the following in the `packages/api-server` directory:
+   ```bash
+   ./mvnw spring-boot:run
+   ```
+
+3. **Run Client & Sync Server**:
+   You can start both concurrently from the root directory:
+   ```bash
+   npm run dev:all
+   ```
+   Or run them individually:
+   ```bash
+   npm run dev              # Starts the React client
+   npm run dev:sync-server  # Starts the collaboration WebSocket server
+   ```
+
+4. **Testing & Linting**:
+   ```bash
+   npm run test:run         # Run all unit/component tests across workspaces
+   npm run lint             # Lint all workspaces
+   ```
+
+5. **API Integration Testing (Hurl)**:
+   The API integration tests use [Hurl](https://hurl.dev) to run E2E flows against the running API server. The target host changes depending on how you run the server:
+   - **Local Development** (Spring Boot direct on port `8081`):
+     ```bash
+     npm run test:api       # Defaults to http://localhost:8081
+     ```
+   - **Docker Compose** (proxied through Client Nginx on port `8080`):
+     ```bash
+     API_HOST=http://localhost:8080 npm run test:api
+     ```
+
+### Running with Docker Compose
+
+To spin up the entire self-contained stack (PostgreSQL, api-server, sync-server, and client) at once:
 ```bash
-npm install          # install all workspace dependencies
-npm run dev          # start the client
-npm run dev:sync-server   # start the collaboration WebSocket server
-npm run test:run     # run all tests across workspaces
-npm run lint         # lint all workspaces
+npm run docker:up            # Builds and starts all containers
+npm run docker:down          # Stops and removes all containers
 ```
 
 ## Deployment
@@ -40,7 +81,7 @@ All secrets must be set in **Repository Settings → Secrets and Variables → A
 | `VM_SSH_HOST` | Cloudflare SSH hostname for the VM | `ssh.pson02.io.vn` |
 | `VM_USER` | SSH username on the VM | `ubuntu` |
 | `VM_SSH_KEY` | Private Ed25519 key for CI authentication (generate a dedicated key pair; add the public key to `~/.ssh/authorized_keys` on the VM) | `-----BEGIN OPENSSH PRIVATE KEY-----\n...` |
-| `APP_JWT_SECRET` | Base64-encoded HMAC-SHA256 secret used to sign JWTs. Currently hard-coded in `application.yaml` — **override this in production** by setting the secret here and passing `APP_JWT_SECRET` as an environment variable to the `api-server` container in the deployment workflow. | `XtVWcilMyRXDU/NTpTCsZp/V5yqM8Cv8BXNwnZ8fFyY=` |
+| `APP_JWT_SECRET` | Base64-encoded HMAC-SHA256 secret used to sign JWTs. **Override this in production** by setting the secret here and passing it as an environment variable to the `api-server` container (as `APP_JWT_SECRET`) and `sync-server` container (as `JWT_SECRET`) in the deployment workflow. | `XtVWcilMyRXDU/NTpTCsZp/V5yqM8Cv8BXNwnZ8fFyY=` |
 
 ## Documentation
 

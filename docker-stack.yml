@@ -54,6 +54,9 @@ services:
 
   sync-server:
     image: ${IMAGE_PREFIX}/collab-editor-sync-server:latest
+    environment:
+      - PORT=1234
+      - JWT_SECRET=${APP_JWT_SECRET}
     networks:
       - collab-net
     deploy:
