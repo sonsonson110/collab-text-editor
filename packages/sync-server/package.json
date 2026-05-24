@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx --env-file .env src/index.ts",
-    "start": "tsx src/index.ts"
+    "start": "tsx src/index.ts",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "jsonwebtoken": "^9.0.3",
@@ -19,6 +21,7 @@
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.14",
     "tsx": "^4.19.4",
-    "typescript": "~5.8.3"
+    "typescript": "~5.8.3",
+    "vitest": "^3.2.1"
   }
 }

@@ -9,7 +9,7 @@ export interface VerifiedClaims {
 }
 
 /**
- * Validates a compact JWT string against the shared HMAC-SHA256 secret.
+ * Validates a compact JWT string against the shared HMAC secret.
  *
  * Reads the secret from the `JWT_SECRET` environment variable (base64-encoded,
  * identical to the value used by the Spring api-server). The secret is decoded
@@ -28,7 +28,7 @@ if (!rawSecret) {
   );
 }
 
-/** Raw bytes of the HMAC-SHA256 signing key, decoded once at startup. */
+/** Raw bytes of the HMAC signing key, decoded once at startup. */
 const SECRET_KEY: Buffer = Buffer.from(rawSecret, "base64");
 
 /**
@@ -39,7 +39,9 @@ const SECRET_KEY: Buffer = Buffer.from(rawSecret, "base64");
  * @throws If the token is invalid, expired, or has a bad signature.
  */
 export function verifyToken(token: string): VerifiedClaims {
-  const payload = jwt.verify(token, SECRET_KEY, { algorithms: ["HS256"] }) as {
+  const payload = jwt.verify(token, SECRET_KEY, {
+    algorithms: ["HS256", "HS384", "HS512"],
+  }) as {
     sub: string;
     role: string;
   };
