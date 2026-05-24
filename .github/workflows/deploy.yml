@@ -88,9 +88,12 @@ jobs:
   deploy-to-vm:
     name: Deploy to VM via SSH over Cloudflare Tunnel
     runs-on: ubuntu-latest
-    needs: build-and-push  # Only runs after images are successfully pushed.
+    needs: build-and-push # Only runs after images are successfully pushed.
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       # Install the cloudflared binary so it can be used as an SSH proxy.
       # This is required because the VM's SSH port is not directly reachable —
       # all traffic must go through the Cloudflare Tunnel.
