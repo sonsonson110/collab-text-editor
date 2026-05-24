@@ -1,7 +1,8 @@
-# auth.hurl
+# auth.hurl — Tests for POST /api/auth/register, /login, /guest
 
 # Happy path: Register a new user
 POST {{host}}/api/auth/register
+Content-Type: application/json
 {
     "email": "test-auth-register-{{suffix}}@example.com",
     "password": "password123",
@@ -15,6 +16,7 @@ jsonpath "$.displayName" == "Auth Tester"
 
 # Validation failure: Register with bad email format
 POST {{host}}/api/auth/register
+Content-Type: application/json
 {
     "email": "not-an-email",
     "password": "password123",
@@ -27,6 +29,7 @@ jsonpath "$.message" == "Validation failed"
 
 # Validation failure: Register with blank password
 POST {{host}}/api/auth/register
+Content-Type: application/json
 {
     "email": "test-auth-bad-{{suffix}}@example.com",
     "password": "",
@@ -34,9 +37,19 @@ POST {{host}}/api/auth/register
 }
 HTTP 400
 
-# Happy path: Login user
-# First register a user to login with
+# Domain error: Duplicate email
 POST {{host}}/api/auth/register
+Content-Type: application/json
+{
+    "email": "test-auth-register-{{suffix}}@example.com",
+    "password": "password123",
+    "displayName": "Another Tester"
+}
+HTTP 409
+
+# Setup: Register a user to test login with
+POST {{host}}/api/auth/register
+Content-Type: application/json
 {
     "email": "test-login-{{suffix}}@example.com",
     "password": "password123",
@@ -44,8 +57,9 @@ POST {{host}}/api/auth/register
 }
 HTTP 201
 
-# Now login
+# Happy path: Login
 POST {{host}}/api/auth/login
+Content-Type: application/json
 {
     "email": "test-login-{{suffix}}@example.com",
     "password": "password123"
@@ -54,24 +68,27 @@ HTTP 200
 [Asserts]
 jsonpath "$.token" != null
 jsonpath "$.userId" != null
+jsonpath "$.displayName" == "Login Tester"
 
-# Unauthorized: Wrong password
+# Auth guard: Login with wrong password
 POST {{host}}/api/auth/login
+Content-Type: application/json
 {
     "email": "test-login-{{suffix}}@example.com",
     "password": "wrongpassword"
 }
 HTTP 401
 
-# Unauthorized: Unknown email
+# Domain error: Login with unknown email
 POST {{host}}/api/auth/login
+Content-Type: application/json
 {
     "email": "unknown-user-{{suffix}}@example.com",
     "password": "password123"
 }
 HTTP 401
 
-# Happy path: Guest token
+# Happy path: Issue a guest token (public endpoint — no auth required)
 POST {{host}}/api/auth/guest
 HTTP 200
 [Asserts]
