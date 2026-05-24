@@ -44,6 +44,7 @@ export function EditorView({ viewModel }: Props) {
   );
   const [topPadding, setTopPadding] = useState(viewModel.getTopPadding());
   const [isMouseInEditor, setIsMouseInEditor] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const [selectionRects, setSelectionRects] = useState(
     buildSelectionRects(
       viewModel.getAnchorViewportPosition() ?? { line: 0, column: 0 },
@@ -437,6 +438,12 @@ export function EditorView({ viewModel }: Props) {
     return viewModel.subscribe(sync);
   }, [viewModel, sync]);
 
+  // Auto-focus the editor container when it first mounts so that the user can
+  // start typing immediately
+  useEffect(() => {
+    containerRef.current?.focus();
+  }, []);
+
   const offsetY = topPadding + viewModel.getViewportStart() * LINE_HEIGHT - scrollTop;
 
   return (
@@ -446,6 +453,8 @@ export function EditorView({ viewModel }: Props) {
       tabIndex={0}
       onKeyDown={handleKeyDown}
       onWheel={handleWheel}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => setIsFocused(false)}
       onMouseEnter={() => setIsMouseInEditor(true)}
       onMouseLeave={() => setIsMouseInEditor(false)}
     >
@@ -498,7 +507,7 @@ export function EditorView({ viewModel }: Props) {
             <Line key={line.lineNumber} line={line} />
           ))}
 
-          {cursor && viewModel.isCursorVisible() && (
+          {cursor && isFocused && viewModel.isCursorVisible() && (
             <CursorComponent position={cursor} />
           )}
 

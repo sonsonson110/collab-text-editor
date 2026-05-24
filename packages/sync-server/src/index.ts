@@ -90,7 +90,9 @@ async function getOrCreateRoom(name: string): Promise<Room> {
     const snapshot = await fetchSnapshot(name);
     if (snapshot) {
       Y.applyUpdate(doc, snapshot);
-      console.log(`[server] Hydrated room "${name}" from snapshot (${snapshot.byteLength} bytes)`);
+      console.log(
+        `[server] Hydrated room "${name}" from snapshot (${snapshot.byteLength} bytes)`,
+      );
     }
   } catch (err) {
     console.error(`[server] Failed to load snapshot for room "${name}":`, err);
@@ -156,7 +158,11 @@ async function getOrCreateRoom(name: string): Promise<Room> {
 // Connection handler
 // ---------------------------------------------------------------------------
 
-function handleConnection(ws: WebSocket, req: IncomingMessage, room: Room): void {
+function handleConnection(
+  ws: WebSocket,
+  req: IncomingMessage,
+  room: Room,
+): void {
   room.connections.add(ws);
 
   // Retrieve the identity attached during the upgrade handshake.
@@ -226,7 +232,11 @@ function handleConnection(ws: WebSocket, req: IncomingMessage, room: Room): void
   });
 
   // ── Cleanup on disconnect ─────────────────────────────────────────────────
-  const roomName = (req.url ?? "/").replace(/^\?.*$/, "").replace(/^\//, "") || "default";
+  const roomName =
+    new URL(req.url ?? "/", `http://localhost:${PORT}`).pathname.replace(
+      /^\//,
+      "",
+    ) || "default";
 
   ws.on("close", () => {
     room.connections.delete(ws);
@@ -271,10 +281,7 @@ const wss = new WebSocketServer({
     info: { req: IncomingMessage },
     callback: (pass: boolean, code?: number, message?: string) => void,
   ) {
-    const url = new URL(
-      info.req.url ?? "/",
-      `http://localhost:${PORT}`,
-    );
+    const url = new URL(info.req.url ?? "/", `http://localhost:${PORT}`);
     const token = url.searchParams.get("token");
 
     if (!token) {
@@ -313,7 +320,11 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
   connectionClaims.set(ws, claims);
 
   // Room name comes from the URL path: ws://host:port/my-room → "my-room"
-  const roomName = (req.url ?? "/").replace(/^\?.*$/, "").replace(/^\//, "") || "default";
+  const roomName =
+    new URL(req.url ?? "/", `http://localhost:${PORT}`).pathname.replace(
+      /^\//,
+      "",
+    ) || "default";
 
   void getOrCreateRoom(roomName).then((room) => {
     handleConnection(ws, req, room);
