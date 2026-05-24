@@ -119,14 +119,16 @@ jobs:
       # Connect to the VM and instruct Docker Swarm to perform a rolling update.
       # --with-registry-auth forwards the runner's GHCR credentials to the
       # Swarm manager so it can pull the newly pushed private images.
-      # IMAGE_PREFIX and APP_JWT_SECRET are passed so docker-stack.yml can
-      # resolve the correct GHCR image paths and inject the JWT signing secret.
+      # docker-stack.yml is piped from the checked-out repo directly into the
+      # remote command via stdin (-c -), so the VM never needs a local copy of
+      # the file — the exact committed revision is always used.
       - name: Deploy stack to Docker Swarm
         run: |
           ssh ${{ secrets.VM_USER }}@${{ secrets.VM_SSH_HOST }} \
             "IMAGE_PREFIX=ghcr.io/${{ github.repository_owner }} \
              APP_JWT_SECRET=${{ secrets.APP_JWT_SECRET }} \
+             APP_INTERNAL_API_SECRET=${{ secrets.APP_INTERNAL_API_SECRET }} \
              docker stack deploy \
                --with-registry-auth \
-               -c ~/docker-stack.yml \
-               collab-editor"
+               -c - \
+               collab-editor" < docker-stack.yml

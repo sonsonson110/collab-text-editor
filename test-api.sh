@@ -21,8 +21,13 @@ echo "Targeting API at: $HOST"
 # Generate a random suffix for email addresses to avoid collisions during repeated tests
 SUFFIX=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 8 | head -n 1)
 
+# Internal API secret used by snapshot.hurl to authenticate against /api/internal/** endpoints.
+# Default matches the application.yaml fallback so local dev works without any extra config.
+INTERNAL_API_SECRET="${INTERNAL_API_SECRET:-sync-server-internal-secret-change-me}"
+
 # Run the hurl tests
 hurl --test \
      --variable host="$HOST" \
      --variable suffix="$SUFFIX" \
+     --variable internal_secret="$INTERNAL_API_SECRET" \
      --glob "packages/api-server/hurl/*.hurl"

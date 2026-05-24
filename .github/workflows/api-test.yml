@@ -25,6 +25,10 @@ jobs:
       - name: Start Spring Boot API Server
         # Starts the app in the background. Spring Boot's docker-compose integration
         # will automatically start PostgreSQL based on packages/api-server/compose.yaml.
+        # APP_INTERNAL_API_SECRET must match what the Hurl snapshot tests send as
+        # x-internal-secret — the default value mirrors application.yaml's fallback.
+        env:
+          APP_INTERNAL_API_SECRET: sync-server-internal-secret-change-me
         run: |
           cd packages/api-server
           ./mvnw spring-boot:run &
@@ -45,6 +49,10 @@ jobs:
           hurl --version
 
       - name: Run API Tests
+        # INTERNAL_API_SECRET is forwarded to test-api.sh, which passes it to hurl
+        # as --variable internal_secret=... for the snapshot endpoint tests.
+        env:
+          INTERNAL_API_SECRET: sync-server-internal-secret-change-me
         run: npm run test:api
 
       - name: Cleanup Docker resources

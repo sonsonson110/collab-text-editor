@@ -18,28 +18,34 @@ Live demo: <https://collab-text-editor.pson02.io.vn/>
 ### Local Development
 
 1. **Install Dependencies**:
+
    ```bash
    npm install
    ```
 
 2. **Run Backend (API Server)**:
    The Spring Boot backend uses Docker Compose integration to automatically start PostgreSQL. Run the following in the `packages/api-server` directory:
+
    ```bash
    ./mvnw spring-boot:run
    ```
 
 3. **Run Client & Sync Server**:
    You can start both concurrently from the root directory:
+
    ```bash
    npm run dev:all
    ```
+
    Or run them individually:
+
    ```bash
    npm run dev              # Starts the React client
    npm run dev:sync-server  # Starts the collaboration WebSocket server
    ```
 
 4. **Testing & Linting**:
+
    ```bash
    npm run test:run         # Run all unit/component tests across workspaces
    npm run lint             # Lint all workspaces
@@ -48,10 +54,13 @@ Live demo: <https://collab-text-editor.pson02.io.vn/>
 5. **API Integration Testing (Hurl)**:
    The API integration tests use [Hurl](https://hurl.dev) to run E2E flows against the running API server. The target host changes depending on how you run the server:
    - **Local Development** (Spring Boot direct on port `8081`):
+
      ```bash
      npm run test:api       # Defaults to http://localhost:8081
      ```
+
    - **Docker Compose** (proxied through Client Nginx on port `8080`):
+
      ```bash
      API_HOST=http://localhost:8080 npm run test:api
      ```
@@ -59,6 +68,7 @@ Live demo: <https://collab-text-editor.pson02.io.vn/>
 ### Running with Docker Compose
 
 To spin up the entire self-contained stack (PostgreSQL, api-server, sync-server, and client) at once:
+
 ```bash
 npm run docker:up            # Builds and starts all containers
 npm run docker:down          # Stops and removes all containers
@@ -68,8 +78,8 @@ npm run docker:down          # Stops and removes all containers
 
 Pushing to `main` triggers the [GitHub Actions workflow](.github/workflows/deploy.yml) which:
 
-1. Builds both Docker images and publishes them to GitHub Container Registry (GHCR).
-2. SSHs into the VM via the Cloudflare Tunnel (`ssh.pson02.io.vn`) and runs a Docker Swarm rolling update.
+1. Builds all three Docker images and publishes them to GitHub Container Registry (GHCR).
+2. SSHs into the VM via the Cloudflare Tunnel (`ssh.pson02.io.vn`) and runs a Docker Swarm rolling update, piping `docker-stack.yml` directly from the repo into `docker stack deploy -c -` — no file needs to exist on the VM.
 
 ### GitHub Actions Secrets
 
@@ -81,7 +91,8 @@ All secrets must be set in **Repository Settings → Secrets and Variables → A
 | `VM_SSH_HOST` | Cloudflare SSH hostname for the VM | `ssh.pson02.io.vn` |
 | `VM_USER` | SSH username on the VM | `ubuntu` |
 | `VM_SSH_KEY` | Private Ed25519 key for CI authentication (generate a dedicated key pair; add the public key to `~/.ssh/authorized_keys` on the VM) | `-----BEGIN OPENSSH PRIVATE KEY-----\n...` |
-| `APP_JWT_SECRET` | Base64-encoded HMAC-SHA256 secret used to sign JWTs. **Override this in production** by setting the secret here and passing it as an environment variable to the `api-server` container (as `APP_JWT_SECRET`) and `sync-server` container (as `JWT_SECRET`) in the deployment workflow. | `XtVWcilMyRXDU/NTpTCsZp/V5yqM8Cv8BXNwnZ8fFyY=` |
+| `APP_JWT_SECRET` | Base64-encoded HMAC-SHA256 secret used to sign JWTs. Injected into `api-server` as `APP_JWT_SECRET` and into `sync-server` as `JWT_SECRET`. | `XtVWcilMyRXDU/NTpTCsZp/V5yqM8Cv8BXNwnZ8fFyY=` |
+| `APP_INTERNAL_API_SECRET` | Shared secret that the `sync-server` sends as the `x-internal-secret` HTTP header when calling internal snapshot endpoints (`/api/internal/**`) on the `api-server`. Injected as `APP_INTERNAL_API_SECRET` into `api-server` and as `INTERNAL_API_SECRET` into `sync-server`. Generate with `openssl rand -hex 32`. | `a3f8c2...` |
 
 ## Documentation
 

@@ -27,9 +27,12 @@ services:
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=password
       - SPRING_DOCKER_COMPOSE_ENABLED=false
-      # Override the default hard-coded secret — set APP_JWT_SECRET on the VM
-      # or pass it via the CI deploy step (see .github/workflows/deploy.yml).
+      # Override the default hard-coded secrets — set these on the VM
+      # or pass them via the CI deploy step (see .github/workflows/deploy.yml).
       - APP_JWT_SECRET=${APP_JWT_SECRET}
+      # Shared secret validated by InternalApiFilter on /api/internal/** routes.
+      # Must match INTERNAL_API_SECRET in the sync-server environment.
+      - APP_INTERNAL_API_SECRET=${APP_INTERNAL_API_SECRET}
     networks:
       - collab-net
     deploy:
@@ -56,7 +59,13 @@ services:
     image: ${IMAGE_PREFIX}/collab-editor-sync-server:latest
     environment:
       - PORT=1234
+      # Must match APP_JWT_SECRET in the api-server environment.
       - JWT_SECRET=${APP_JWT_SECRET}
+      # Shared secret sent as x-internal-secret header to /api/internal/** endpoints.
+      # Must match APP_INTERNAL_API_SECRET in the api-server environment.
+      - INTERNAL_API_SECRET=${APP_INTERNAL_API_SECRET}
+      # Base URL the sync-server uses to reach the api-server over the overlay network.
+      - API_BASE_URL=http://api-server:8081
     networks:
       - collab-net
     deploy:
