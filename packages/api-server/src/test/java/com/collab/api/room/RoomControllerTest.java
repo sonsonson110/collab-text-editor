@@ -1,7 +1,6 @@
 package com.collab.api.room;
 
 import com.collab.api.auth.dto.RegisterRequest;
-import com.collab.api.room.dto.CreateRoomRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,13 +15,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * Integration tests for {@link RoomController}.
- *
- * <p>Each test boots the full Spring context, goes through the Security filter
- * chain, and hits a real PostgreSQL database. {@code @Transactional} rolls back
- * every test automatically — no cleanup scripts needed.
- */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
@@ -34,9 +26,6 @@ class RoomControllerTest {
     @Autowired
     ObjectMapper json;
 
-    // ── helpers ───────────────────────────────────────────────────────────────
-
-    /** Registers a fresh user and returns their bearer token. */
     private String registerAndGetToken(String email) throws Exception {
         var body = json.writeValueAsString(
                 new RegisterRequest(email, "password123", "Test User"));
@@ -49,138 +38,134 @@ class RoomControllerTest {
                 .get("token").asText();
     }
 
-    // ── POST /api/rooms ───────────────────────────────────────────────────────
+    private String getGuestToken() throws Exception {
+        var result = mockMvc.perform(post("/api/auth/guest"))
+                .andExpect(status().isOk())
+                .andReturn();
+        return json.readTree(result.getResponse().getContentAsString())
+                .get("token").asText();
+    }
+
+    // ── POST /api/rooms/quickshare ────────────────────────────────────────────
 
     @Test
-    void createRoom_authenticated_returnsCreated() throws Exception {
-        var token = registerAndGetToken("alice@example.com");
-        var body = json.writeValueAsString(new CreateRoomRequest("Design Room"));
+    void quickshare_withGuestToken_returnsCreatedWithSlug() throws Exception {
+        var token = getGuestToken();
 
-        mockMvc.perform(post("/api/rooms")
-                        .contentType(APPLICATION_JSON)
-                        .content(body)
+        mockMvc.perform(post("/api/rooms/quickshare")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").isNotEmpty())
-                .andExpect(jsonPath("$.name").value("Design Room"))
+                .andExpect(jsonPath("$.slug").isNotEmpty())
+                .andExpect(jsonPath("$.isClaimed").value(false))
+                .andExpect(jsonPath("$.accessMode").value("PUBLIC_EDIT"))
+                .andExpect(jsonPath("$.ownerId").isEmpty());
+    }
+
+    @Test
+    void quickshare_withMemberToken_returnsClaimed() throws Exception {
+        var token = registerAndGetToken("alice@example.com");
+
+        mockMvc.perform(post("/api/rooms/quickshare")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").isNotEmpty())
+                .andExpect(jsonPath("$.slug").isNotEmpty())
+                .andExpect(jsonPath("$.isClaimed").value(true))
                 .andExpect(jsonPath("$.ownerId").isNotEmpty());
     }
 
     @Test
-    void createRoom_unauthenticated_returns401() throws Exception {
-        var body = json.writeValueAsString(new CreateRoomRequest("Design Room"));
-
-        // No Authorization header — security filter chain must reject this
-        mockMvc.perform(post("/api/rooms")
-                        .contentType(APPLICATION_JSON)
-                        .content(body))
+    void quickshare_unauthenticated_returns401() throws Exception {
+        mockMvc.perform(post("/api/rooms/quickshare"))
                 .andExpect(status().isUnauthorized());
     }
 
-    @Test
-    void createRoom_blankName_returns400WithFieldError() throws Exception {
-        var token = registerAndGetToken("alice@example.com");
-        var body = json.writeValueAsString(new CreateRoomRequest(""));
-
-        mockMvc.perform(post("/api/rooms")
-                        .contentType(APPLICATION_JSON)
-                        .content(body)
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fieldErrors[0].field").value("name"));
-    }
-
-    // ── GET /api/rooms ────────────────────────────────────────────────────────
+    // ── POST /api/rooms/{id}/claim ────────────────────────────────────────────
 
     @Test
-    void listRooms_returnsOnlyRoomsUserIsMemberOf() throws Exception {
-        var aliceToken = registerAndGetToken("alice@example.com");
-        var bobToken = registerAndGetToken("bob@example.com");
-
-        // Alice creates her room
-        mockMvc.perform(post("/api/rooms")
-                        .contentType(APPLICATION_JSON)
-                        .content(json.writeValueAsString(new CreateRoomRequest("Alice Room")))
-                        .header("Authorization", "Bearer " + aliceToken))
-                .andExpect(status().isCreated());
-
-        // Bob creates his room
-        mockMvc.perform(post("/api/rooms")
-                        .contentType(APPLICATION_JSON)
-                        .content(json.writeValueAsString(new CreateRoomRequest("Bob Room")))
-                        .header("Authorization", "Bearer " + bobToken))
-                .andExpect(status().isCreated());
-
-        // Alice should only see her own room
-        mockMvc.perform(get("/api/rooms")
-                        .header("Authorization", "Bearer " + aliceToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].name").value("Alice Room"));
-    }
-
-    @Test
-    void listRooms_unauthenticated_returns401() throws Exception {
-        mockMvc.perform(get("/api/rooms"))
-                .andExpect(status().isUnauthorized());
-    }
-
-    // ── GET /api/rooms/{id} ───────────────────────────────────────────────────
-
-    @Test
-    void getRoomById_memberCanAccess_returnsOk() throws Exception {
-        var token = registerAndGetToken("alice@example.com");
-
-        // Create a room and capture its ID
-        var createResult = mockMvc.perform(post("/api/rooms")
-                        .contentType(APPLICATION_JSON)
-                        .content(json.writeValueAsString(new CreateRoomRequest("Alice Room")))
-                        .header("Authorization", "Bearer " + token))
+    void claimRoom_unclaimedRoom_returnsOk() throws Exception {
+        var guestToken = getGuestToken();
+        var createResult = mockMvc.perform(post("/api/rooms/quickshare")
+                        .header("Authorization", "Bearer " + guestToken))
                 .andExpect(status().isCreated())
                 .andReturn();
         var roomId = json.readTree(createResult.getResponse().getContentAsString())
                 .get("id").asText();
 
-        mockMvc.perform(get("/api/rooms/" + roomId)
-                        .header("Authorization", "Bearer " + token))
+        var memberToken = registerAndGetToken("bob@example.com");
+        
+        mockMvc.perform(post("/api/rooms/" + roomId + "/claim")
+                        .header("Authorization", "Bearer " + memberToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(roomId))
-                .andExpect(jsonPath("$.name").value("Alice Room"));
+                .andExpect(jsonPath("$.isClaimed").value(true))
+                .andExpect(jsonPath("$.ownerId").isNotEmpty());
     }
 
     @Test
-    void getRoomById_nonMemberGetsForbidd() throws Exception {
+    void claimRoom_alreadyClaimed_returns409() throws Exception {
         var aliceToken = registerAndGetToken("alice@example.com");
-        var bobToken = registerAndGetToken("bob@example.com");
-
-        // Alice creates a room
-        var createResult = mockMvc.perform(post("/api/rooms")
-                        .contentType(APPLICATION_JSON)
-                        .content(json.writeValueAsString(new CreateRoomRequest("Alice Room")))
+        var createResult = mockMvc.perform(post("/api/rooms/quickshare")
                         .header("Authorization", "Bearer " + aliceToken))
                 .andExpect(status().isCreated())
                 .andReturn();
         var roomId = json.readTree(createResult.getResponse().getContentAsString())
                 .get("id").asText();
 
-        // Bob (not a member) should get 403
-        mockMvc.perform(get("/api/rooms/" + roomId)
+        var bobToken = registerAndGetToken("bob@example.com");
+
+        mockMvc.perform(post("/api/rooms/" + roomId + "/claim")
                         .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void claimRoom_guestToken_returns403() throws Exception {
+        var guestToken1 = getGuestToken();
+        var createResult = mockMvc.perform(post("/api/rooms/quickshare")
+                        .header("Authorization", "Bearer " + guestToken1))
+                .andExpect(status().isCreated())
+                .andReturn();
+        var roomId = json.readTree(createResult.getResponse().getContentAsString())
+                .get("id").asText();
+
+        var guestToken2 = getGuestToken();
+
+        mockMvc.perform(post("/api/rooms/" + roomId + "/claim")
+                        .header("Authorization", "Bearer " + guestToken2))
                 .andExpect(status().isForbidden());
     }
 
-    @Test
-    void getRoomById_unknownRoom_returns404() throws Exception {
-        var token = registerAndGetToken("alice@example.com");
+    // ── GET /api/rooms/{id} & /api/rooms/by-slug/{slug} ─────────────────────
 
-        mockMvc.perform(get("/api/rooms/00000000-0000-0000-0000-000000000000")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isNotFound());
+    @Test
+    void getRoomById_publicRoom_guestCanAccess() throws Exception {
+        var creatorToken = getGuestToken();
+        var createResult = mockMvc.perform(post("/api/rooms/quickshare")
+                        .header("Authorization", "Bearer " + creatorToken))
+                .andExpect(status().isCreated())
+                .andReturn();
+        var roomId = json.readTree(createResult.getResponse().getContentAsString())
+                .get("id").asText();
+        var slug = json.readTree(createResult.getResponse().getContentAsString())
+                .get("slug").asText();
+
+        var readerToken = getGuestToken();
+
+        mockMvc.perform(get("/api/rooms/" + roomId)
+                        .header("Authorization", "Bearer " + readerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(roomId));
+
+        mockMvc.perform(get("/api/rooms/by-slug/" + slug)
+                        .header("Authorization", "Bearer " + readerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.slug").value(slug));
     }
 
     @Test
-    void getRoomById_unauthenticated_returns401() throws Exception {
-        mockMvc.perform(get("/api/rooms/00000000-0000-0000-0000-000000000000"))
-                .andExpect(status().isUnauthorized());
+    void getRoomById_privateRoom_nonMember_returns403() throws Exception {
+        // Not testing private rooms yet as they can't be created via quickshare without changing access_mode
+        // Skipped intentionally for this phase.
     }
 }

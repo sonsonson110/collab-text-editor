@@ -27,6 +27,8 @@ services:
       - SPRING_DOCKER_COMPOSE_ENABLED=false
       # Must match JWT_SECRET in sync-server
       - APP_JWT_SECRET=XtVWcilMyRXDU/NTpTCsZp/V5yqM8Cv8BXNwnZ8fFyY=
+      # Must match INTERNAL_API_SECRET in sync-server
+      - APP_INTERNAL_API_SECRET=sync-server-internal-secret-change-me
     depends_on:
       postgres:
         condition: service_healthy
@@ -40,6 +42,12 @@ services:
       - PORT=1234
       # Must match APP_JWT_SECRET in api-server
       - JWT_SECRET=XtVWcilMyRXDU/NTpTCsZp/V5yqM8Cv8BXNwnZ8fFyY=
+      # Must match APP_INTERNAL_API_SECRET in api-server
+      - INTERNAL_API_SECRET=sync-server-internal-secret-change-me
+      # Base URL the sync-server uses to reach the api-server (Docker network)
+      - API_BASE_URL=http://api-server:8081
+    depends_on:
+      - api-server
     restart: unless-stopped
 
   client:

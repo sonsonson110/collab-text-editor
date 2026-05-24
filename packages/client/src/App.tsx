@@ -1,14 +1,15 @@
-import { EditorSetup } from "@/ui/EditorSetup";
-import { AppLayout } from "@/ui/templates/AppLayout";
-import { CollaborationLayout } from "@/ui/templates/CollaborationLayout";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { LandingPage } from "@/pages/LandingPage";
+import { RoomPage } from "@/pages/RoomPage";
 
 function App() {
   return (
-    <AppLayout>
-      <EditorSetup>
-        <CollaborationLayout />
-      </EditorSetup>
-    </AppLayout>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/room/:roomId" element={<RoomPage />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
 

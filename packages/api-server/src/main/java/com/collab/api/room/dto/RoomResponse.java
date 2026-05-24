@@ -1,21 +1,26 @@
 package com.collab.api.room.dto;
 
+import com.collab.api.room.entity.AccessMode;
+import com.collab.api.room.entity.Room;
+
 import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Read-only projection of a {@link com.collab.api.room.entity.Room} returned
- * by the API. Using a dedicated DTO ensures that internal entity fields (e.g.,
- * future audit columns) are never accidentally exposed.
+ * Read-only projection of a {@link Room} returned by the API.
  *
- * @param id        The room's unique identifier.
- * @param name      The room's display name.
- * @param ownerId   The UUID of the user who created the room.
- * @param createdAt When the room was created.
+ * @param id         The room's unique identifier (UUID).
+ * @param slug       Short URL-safe identifier used in client-side routes ({@code /room/<slug>}).
+ * @param ownerId    UUID of the room owner, or {@code null} for unclaimed rooms.
+ * @param isClaimed  {@code true} if the room has an owner (is permanent).
+ * @param accessMode The room's current access control setting.
+ * @param createdAt  When the room was created.
  */
 public record RoomResponse(
         UUID id,
-        String name,
+        String slug,
         UUID ownerId,
+        boolean isClaimed,
+        String accessMode,
         Instant createdAt
 ) {}

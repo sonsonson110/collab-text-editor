@@ -1,5 +1,6 @@
 package com.collab.api.shared.config;
 
+import com.collab.api.shared.security.InternalApiFilter;
 import com.collab.api.shared.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -27,6 +28,10 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  *       the JWT cryptographically; it never hits the database.</li>
  * </ul>
  *
+ * <p>Phase 3 addition: {@link InternalApiFilter} authenticates {@code /api/internal/**}
+ * routes via a shared secret header ({@code x-internal-secret}) instead of JWT.
+ * These routes are used exclusively by the sync-server for snapshot persistence.
+ *
  * <p>{@code @EnableMethodSecurity} activates {@code @PreAuthorize} /
  * {@code @PostAuthorize} so individual service methods can be secured by role
  * in Phase 4 without any further configuration change here.
@@ -37,9 +42,14 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final InternalApiFilter internalApiFilter;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(
+            JwtAuthenticationFilter jwtAuthenticationFilter,
+            InternalApiFilter internalApiFilter
+    ) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.internalApiFilter = internalApiFilter;
     }
 
     /**
@@ -53,9 +63,13 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
                 .authorizeHttpRequests(auth -> auth
+                        // Public auth endpoints
                         .requestMatchers(HttpMethod.POST, "/api/auth/register").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/guest").permitAll()
+                        // Internal routes are authenticated by InternalApiFilter, not JWT
+                        .requestMatchers("/api/internal/**").permitAll()
+                        // All other requests require a valid JWT
                         .anyRequest().authenticated()
                 )
 
@@ -64,7 +78,9 @@ public class SecurityConfig {
                                 response.sendError(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized"))
                 )
 
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                // InternalApiFilter runs first so internal routes never reach JWT parsing
+                .addFilterBefore(internalApiFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(jwtAuthenticationFilter, InternalApiFilter.class);
 
         return http.build();
     }
@@ -79,6 +95,19 @@ public class SecurityConfig {
             jwtAuthenticationFilterRegistration() {
         var registration =
                 new org.springframework.boot.web.servlet.FilterRegistrationBean<>(jwtAuthenticationFilter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    /**
+     * Prevents Spring Boot from auto-registering {@link InternalApiFilter}
+     * in the servlet filter chain a second time.
+     */
+    @Bean
+    public org.springframework.boot.web.servlet.FilterRegistrationBean<InternalApiFilter>
+            internalApiFilterRegistration() {
+        var registration =
+                new org.springframework.boot.web.servlet.FilterRegistrationBean<>(internalApiFilter);
         registration.setEnabled(false);
         return registration;
     }

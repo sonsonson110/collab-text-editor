@@ -16,6 +16,12 @@
  *   the WebSocket upgrade URL.  The token is verified locally (no Spring call)
  *   via {@link verifyToken}.  Invalid or missing tokens cause the upgrade to be
  *   rejected with WebSocket close code 4401 before the connection is opened.
+ *
+ * Snapshot persistence (Phase 3):
+ *   When a room is created, the latest binary Yjs snapshot is fetched from the
+ *   api-server and applied to the Y.Doc before accepting connections.
+ *   Document changes trigger debounced + max-wait saves back to the api-server.
+ *   A final save is performed when the last client disconnects.
  */
 
 import { WebSocketServer, WebSocket } from "ws";
@@ -26,6 +32,8 @@ import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import type { IncomingMessage } from "node:http";
 import { verifyToken, type VerifiedClaims } from "./auth/jwtVerifier.js";
+import { fetchSnapshot } from "./api/snapshotClient.js";
+import { startTracking, stopTracking } from "./snapshot/snapshotScheduler.js";
 
 const MSG_SYNC = 0;
 const MSG_AWARENESS = 1;
@@ -59,7 +67,14 @@ interface Room {
 
 const rooms = new Map<string, Room>();
 
-function getOrCreateRoom(name: string): Room {
+/**
+ * Returns the existing room for `name`, or creates and hydrates a new one.
+ *
+ * On creation, the latest snapshot is fetched from the api-server and applied
+ * to the Y.Doc so document state survives sync-server restarts.
+ * The snapshot scheduler is also started to persist future changes.
+ */
+async function getOrCreateRoom(name: string): Promise<Room> {
   const existing = rooms.get(name);
   if (existing) {
     return existing;
@@ -68,6 +83,18 @@ function getOrCreateRoom(name: string): Room {
   const doc = new Y.Doc();
   const awareness = new awarenessProtocol.Awareness(doc);
   const room: Room = { doc, awareness, connections: new Set() };
+
+  // Hydrate from the api-server snapshot before accepting any connections.
+  // If no snapshot exists (new room), the doc stays empty.
+  try {
+    const snapshot = await fetchSnapshot(name);
+    if (snapshot) {
+      Y.applyUpdate(doc, snapshot);
+      console.log(`[server] Hydrated room "${name}" from snapshot (${snapshot.byteLength} bytes)`);
+    }
+  } catch (err) {
+    console.error(`[server] Failed to load snapshot for room "${name}":`, err);
+  }
 
   /**
    * Broadcast every document update to all clients in the room except the one
@@ -118,6 +145,9 @@ function getOrCreateRoom(name: string): Room {
     },
   );
 
+  // Start debounced snapshot persistence for this room.
+  startTracking(name, doc);
+
   rooms.set(name, room);
   return room;
 }
@@ -126,10 +156,7 @@ function getOrCreateRoom(name: string): Room {
 // Connection handler
 // ---------------------------------------------------------------------------
 
-function handleConnection(ws: WebSocket, req: IncomingMessage): void {
-  // Room name comes from the URL path: ws://host:port/my-room → "my-room"
-  const roomName = (req.url ?? "/").replace(/^\?.*$/, "").replace(/^\//, "") || "default";
-  const room = getOrCreateRoom(roomName);
+function handleConnection(ws: WebSocket, req: IncomingMessage, room: Room): void {
   room.connections.add(ws);
 
   // Retrieve the identity attached during the upgrade handshake.
@@ -199,6 +226,8 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
   });
 
   // ── Cleanup on disconnect ─────────────────────────────────────────────────
+  const roomName = (req.url ?? "/").replace(/^\?.*$/, "").replace(/^\//, "") || "default";
+
   ws.on("close", () => {
     room.connections.delete(ws);
     // Remove the disconnected client's awareness state so other clients stop
@@ -208,10 +237,12 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
       [room.doc.clientID],
       null,
     );
-    // Tear down empty rooms to free memory.
+    // When the last client leaves, persist a final snapshot and tear down the room.
     if (room.connections.size === 0) {
-      room.awareness.destroy();
-      rooms.delete(roomName);
+      void stopTracking(roomName, room.doc).then(() => {
+        room.awareness.destroy();
+        rooms.delete(roomName);
+      });
     }
   });
 
@@ -267,6 +298,9 @@ const wss = new WebSocketServer({
 /**
  * Transfer claims from the upgrade request to the WebSocket instance so that
  * {@link handleConnection} can access them via the type-safe {@link connectionClaims} map.
+ *
+ * Room creation is async (snapshot hydration), so we await it before handling
+ * the connection to ensure the Y.Doc is fully hydrated first.
  */
 wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
   const claims = (req as IncomingMessage & { _claims?: VerifiedClaims })
@@ -277,7 +311,13 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     return;
   }
   connectionClaims.set(ws, claims);
-  handleConnection(ws, req);
+
+  // Room name comes from the URL path: ws://host:port/my-room → "my-room"
+  const roomName = (req.url ?? "/").replace(/^\?.*$/, "").replace(/^\//, "") || "default";
+
+  void getOrCreateRoom(roomName).then((room) => {
+    handleConnection(ws, req, room);
+  });
 });
 
 console.log(`Collaboration server running on ws://localhost:${PORT}`);

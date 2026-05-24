@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
-import { INITIAL_TEXT, LINE_HEIGHT } from "@/constants";
+import { LINE_HEIGHT } from "@/constants";
 import { CollaborativeDocument } from "@/core/document/collaborativeDocument";
 import { Position } from "@/core/position/position";
 import { Cursor } from "@/editor/cursor/cursor";
@@ -16,9 +16,6 @@ import { YjsUndoManager } from "@/collaboration/yjsUndoManager";
 import type { ConnectionStatus } from "@/ui/components";
 import { TOP_PADDING_RESERVATION_KEYS } from "@/view/types";
 
-const WS_URL = import.meta.env.VITE_WS_URL as string;
-const ROOM_NAME = import.meta.env.VITE_ROOM_NAME as string;
-
 /** Palette used to assign each remote collaborator a distinct cursor color. */
 const REMOTE_CURSOR_COLORS = [
   "#e03131",
@@ -31,33 +28,76 @@ const REMOTE_CURSOR_COLORS = [
   "#5c7cfa",
 ];
 
+interface UseCollaborativeEditorProps {
+  /** The room's UUID (used as the Yjs room name and WebSocket path segment). */
+  roomId: string;
+  /** A valid JWT (guest or member) for the WebSocket upgrade handshake. */
+  token: string;
+}
+
+interface UseCollaborativeEditorResult {
+  viewModel: ViewModel | null;
+  status: ConnectionStatus;
+  users: ConnectedUser[];
+  /**
+   * Reconnects the WebSocket provider with a new token while preserving the
+   * local Y.Doc state. Used after claiming a room (guest → member upgrade).
+   *
+   * @param newToken The new Member JWT to connect with.
+   */
+  reconnect: (newToken: string) => void;
+}
+
 /**
  * Bootstraps the entire collaborative editing session.
  *
  * Creates the Yjs document, WebSocket provider, editor state, and view model,
  * then wires up awareness broadcasting and remote-cursor collection.
  *
- * Returns `{ viewModel, status, users }` — the view model is `null` until the
- * provider has connected and the editor state is ready.
+ * The WebSocket URL is constructed from the Vite proxy path:
+ * `/ws/<roomId>?token=<jwt>` — the Vite dev server proxies `/ws` to the
+ * sync-server, and Nginx does the same in production.
+ *
+ * Returns `{ viewModel, status, users, reconnect }` — the view model is `null`
+ * until the provider has connected and the editor state is ready.
  */
-export function useCollaborativeEditor() {
+export function useCollaborativeEditor({
+  roomId,
+  token,
+}: UseCollaborativeEditorProps): UseCollaborativeEditorResult {
   const [viewModel, setViewModel] = useState<ViewModel | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const [users, setUsers] = useState<ConnectedUser[]>([]);
 
+  // Stable refs so reconnect() can access the latest provider/doc/vm without
+  // being listed as a useEffect dependency.
+  const providerRef = useRef<WebsocketProvider | null>(null);
+  const ydocRef = useRef<Y.Doc | null>(null);
+  const vmRef = useRef<ViewModel | null>(null);
+
+  // Derive the WS base URL: in dev the Vite proxy rewrites /ws → sync-server.
+  // In production Nginx does the same. We never hardcode a port here.
+  const wsBaseUrl =
+    (import.meta.env.VITE_WS_URL as string | undefined) ?? `${window.location.origin.replace(/^http/, "ws")}/ws`;
+
   useEffect(() => {
     const ydoc = new Y.Doc();
+    ydocRef.current = ydoc;
     const ytext = ydoc.getText("content");
 
-    const provider = new WebsocketProvider(WS_URL, ROOM_NAME, ydoc);
+    const provider = new WebsocketProvider(wsBaseUrl, roomId, ydoc, {
+      connect: true,
+      params: { token },
+    });
+    providerRef.current = provider;
     const awareness = provider.awareness;
 
-    // Assign a random identity so other clients can label this user's cursor.
+    // Assign a random display identity for the presence bar.
     const name = `User ${Math.floor(Math.random() * 1000)}`;
     const color =
       REMOTE_CURSOR_COLORS[
         Math.floor(Math.random() * REMOTE_CURSOR_COLORS.length)
-      ];
+      ]!;
     awareness.setLocalStateField("user", { name, color });
 
     const doc = new CollaborativeDocument(ytext);
@@ -72,10 +112,12 @@ export function useCollaborativeEditor() {
       const connectedUsers: ConnectedUser[] = [];
 
       states.forEach((state: Record<string, unknown>, clientID: number) => {
-        const userInfo = state.user as
+        const userInfo = state["user"] as
           | { name: string; color: string }
           | undefined;
-        if (!userInfo) return;
+        if (!userInfo) {
+          return;
+        }
 
         connectedUsers.push({
           clientID,
@@ -84,9 +126,11 @@ export function useCollaborativeEditor() {
           isLocal: clientID === ydoc.clientID,
         });
 
-        if (clientID === ydoc.clientID) return;
+        if (clientID === ydoc.clientID) {
+          return;
+        }
 
-        const cursorState = state.cursor as
+        const cursorState = state["cursor"] as
           | {
               anchor: Y.RelativePosition;
               head: Y.RelativePosition;
@@ -115,32 +159,22 @@ export function useCollaborativeEditor() {
         }
       });
 
-      vm.setRemoteCursors(cursors);
+      if (vmRef.current) {
+        vmRef.current.setRemoteCursors(cursors);
 
-      // Reserve top padding when any remote cursor head sits on line 0 so
-      // the cursor label is not clipped above the viewport. Zeroing the
-      // reservation (rather than removing the key) lets other reservations
-      // still contribute via max().
-      const hasRemoteOnLine0 = cursors.some((c) => c.head.line === 0);
-      vm.reserveTopPadding(
-        TOP_PADDING_RESERVATION_KEYS.REMOTE_CURSOR_LINE_0,
-        hasRemoteOnLine0 ? LINE_HEIGHT : 0,
-      );
+        const hasRemoteOnLine0 = cursors.some((c) => c.head.line === 0);
+        vmRef.current.reserveTopPadding(
+          TOP_PADDING_RESERVATION_KEYS.REMOTE_CURSOR_LINE_0,
+          hasRemoteOnLine0 ? LINE_HEIGHT : 0,
+        );
+      }
 
       setUsers(connectedUsers);
     });
 
-    // Seed with initial content only when this is the first client in the room.
-    // After sync, if the document is empty no one else has typed yet — safe to seed.
-    provider.on("sync", (synced: boolean) => {
-      if (synced && ytext.toString() === "") {
-        ytext.insert(0, INITIAL_TEXT);
-      }
-    });
-
     // Track connection status for the UI indicator.
-    provider.on("status", ({ status }: { status: string }) => {
-      setStatus(status as ConnectionStatus);
+    provider.on("status", ({ status: s }: { status: string }) => {
+      setStatus(s as ConnectionStatus);
     });
 
     const cursor = new Cursor(new Position(0, 0));
@@ -160,14 +194,39 @@ export function useCollaborativeEditor() {
     });
 
     const vm = new ViewModel(editorState);
+    vmRef.current = vm;
     setViewModel(vm);
 
-    // Destroy the provider when the component unmounts to close the WebSocket cleanly.
-    // This perfectly handles React 18 Strict Mode double-mounts.
     return () => {
       provider.destroy();
+      providerRef.current = null;
     };
-  }, []);
+  }, [roomId, token, wsBaseUrl]);
 
-  return { viewModel, status, users };
+  /**
+   * Swaps the WebSocket provider to use a new token, preserving the Y.Doc.
+   * Call this after a guest claims a room and receives a Member JWT.
+   */
+  const reconnect = useCallback(
+    (newToken: string) => {
+      if (!providerRef.current || !ydocRef.current) {
+        return;
+      }
+      const ydoc = ydocRef.current;
+      providerRef.current.destroy();
+
+      const newProvider = new WebsocketProvider(wsBaseUrl, roomId, ydoc, {
+        connect: true,
+        params: { token: newToken },
+      });
+      providerRef.current = newProvider;
+
+      newProvider.on("status", ({ status: s }: { status: string }) => {
+        setStatus(s as ConnectionStatus);
+      });
+    },
+    [roomId, wsBaseUrl],
+  );
+
+  return { viewModel, status, users, reconnect };
 }

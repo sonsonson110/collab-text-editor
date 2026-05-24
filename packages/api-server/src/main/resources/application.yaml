@@ -38,3 +38,9 @@ app:
     secret: XtVWcilMyRXDU/NTpTCsZp/V5yqM8Cv8BXNwnZ8fFyY=
     expiration-ms: 3600000         # 1 hour for authenticated users
     guest-expiration-ms: 86400000  # 24 hours for guest tokens
+
+  # Shared secret for sync-server → api-server internal calls.
+  # Production: override via APP_INTERNAL_API_SECRET environment variable.
+  # Must match INTERNAL_API_SECRET in the sync-server environment.
+  internal-api:
+    secret: change-me-in-production
