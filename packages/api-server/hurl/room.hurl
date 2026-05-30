@@ -58,6 +58,7 @@ jsonpath "$.slug" != null
 jsonpath "$.isClaimed" == false
 [Captures]
 guest_room_id: jsonpath "$.id"
+guest_creator_secret: jsonpath "$.creatorSecret"
 
 # Auth guard: No token → 401
 POST {{host}}/api/rooms/quickshare
@@ -70,6 +71,10 @@ HTTP 401
 # Happy path: Claimer claims the unclaimed guest room
 POST {{host}}/api/rooms/{{guest_room_id}}/claim
 Authorization: Bearer {{room_claimer_token}}
+Content-Type: application/json
+{
+    "creatorSecret": "{{guest_creator_secret}}"
+}
 HTTP 200
 [Asserts]
 jsonpath "$.id" == "{{guest_room_id}}"
@@ -78,6 +83,10 @@ jsonpath "$.isClaimed" == true
 # Domain error: Room already claimed → 409
 POST {{host}}/api/rooms/{{guest_room_id}}/claim
 Authorization: Bearer {{room_owner_token}}
+Content-Type: application/json
+{
+    "creatorSecret": "{{guest_creator_secret}}"
+}
 HTTP 409
 
 # Auth guard: No token → 401
@@ -87,6 +96,10 @@ HTTP 401
 # Auth guard: Guest token cannot claim (requires ROLE_AUTHENTICATED) → 403
 POST {{host}}/api/rooms/{{member_room_id}}/claim
 Authorization: Bearer {{guest_token}}
+Content-Type: application/json
+{
+    "creatorSecret": "dummy-secret"
+}
 HTTP 403
 
 # -----------------------------------------------------------------------

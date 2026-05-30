@@ -72,10 +72,15 @@ HTTP 201
 jsonpath "$.isClaimed" == false
 [Captures]
 e2e_guest_room_id: jsonpath "$.id"
+e2e_guest_creator_secret: jsonpath "$.creatorSecret"
 
 # 9. Member claims the guest's room
 POST {{host}}/api/rooms/{{e2e_guest_room_id}}/claim
 Authorization: Bearer {{e2e_token}}
+Content-Type: application/json
+{
+    "creatorSecret": "{{e2e_guest_creator_secret}}"
+}
 HTTP 200
 [Asserts]
 jsonpath "$.id" == "{{e2e_guest_room_id}}"
