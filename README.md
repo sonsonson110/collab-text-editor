@@ -1,99 +1,131 @@
 # Educational Text Editor
 
-A monorepo for building a text editor from scratch — for learning purposes.
+A from-scratch collaborative text editor — built for learning purposes.
 
 Live demo: <https://collab-text-editor.pson02.io.vn/>
-> Server might only be available around 9 PM – 11 PM (GMT+7) — it's a VM running on a laptop.
+> Server availability is limited (~9 PM – 11 PM GMT+7, running on a laptop VM).
+
+---
+
+## Architecture at a Glance
+
+```
+Browser (Vite + React)
+  core/   → Document, LineIndex, Position, Range
+  editor/ → EditorState, Cursor, History
+  view/   → ViewModel (viewport math)
+  ui/     → EditorView, Components (React)
+  collaboration/ → CollaborativeDocument (Y.Text), awareness
+       │
+       │ WebSocket (Yjs sync + awareness)
+       ▼
+sync-server (Node.js + ws)
+  • Per-room Y.Doc management
+  • JWT auth at WebSocket upgrade
+  • Debounced snapshot persistence
+       │
+       │ HTTP (x-internal-secret)
+       ▼
+api-server (Spring Boot 3)
+  • Auth (register / login / guest JWT)
+  • Room CRUD + claim flow
+  • Snapshot storage (PostgreSQL)
+```
+
+See [`docs/architecture.md`](./docs/architecture.md) for the full breakdown.
+
+---
 
 ## Packages
 
-| Package | Description |
-|---|---|
-| [`@myapp/client`](./packages/client) | Vite + React editor frontend |
-| [`@myapp/sync-server`](./packages/sync-server) | Collaboration server (Yjs WebSocket) |
-| [`api-server`](./packages/api-server) | Spring Boot REST API (auth, room management) |
+| Package | Path | Description |
+|---------|------|-------------|
+| `@myapp/client` | [`packages/client`](./packages/client) | Vite + React editor frontend |
+| `@myapp/sync-server` | [`packages/sync-server`](./packages/sync-server) | Collaboration server (Yjs WebSocket) |
+| `api-server` | [`packages/api-server`](./packages/api-server) | Spring Boot REST API |
+
+---
 
 ## Getting Started
 
 ### Local Development
 
-1. **Install Dependencies**:
+1. **Install dependencies**:
 
    ```bash
    npm install
    ```
 
-2. **Run Backend (API Server)**:
-   The Spring Boot backend uses Docker Compose integration to automatically start PostgreSQL. Run the following in the `packages/api-server` directory:
+2. **Start the API server** (auto-starts PostgreSQL via Docker Compose integration):
 
    ```bash
-   ./mvnw spring-boot:run
+   cd packages/api-server && ./mvnw spring-boot:run
    ```
 
-3. **Run Client & Sync Server**:
-   You can start both concurrently from the root directory:
+3. **Start client + sync-server**:
 
    ```bash
    npm run dev:all
    ```
 
-   Or run them individually:
+   Or individually:
 
    ```bash
-   npm run dev              # Starts the React client
-   npm run dev:sync-server  # Starts the collaboration WebSocket server
+   npm run dev              # React client
+   npm run dev:sync-server  # Collaboration WebSocket server
    ```
 
-4. **Testing & Linting**:
-
-   ```bash
-   npm run test:run         # Run all unit/component tests across workspaces
-   npm run lint             # Lint all workspaces
-   ```
-
-5. **API Integration Testing (Hurl)**:
-   The API integration tests use [Hurl](https://hurl.dev) to run E2E flows against the running API server. The target host changes depending on how you run the server:
-   - **Local Development** (Spring Boot direct on port `8081`):
-
-     ```bash
-     npm run test:api       # Defaults to http://localhost:8081
-     ```
-
-   - **Docker Compose** (proxied through Client Nginx on port `8080`):
-
-     ```bash
-     API_HOST=http://localhost:8080 npm run test:api
-     ```
-
-### Running with Docker Compose
-
-To spin up the entire self-contained stack (PostgreSQL, api-server, sync-server, and client) at once:
+### Docker Compose (Full Stack)
 
 ```bash
-npm run docker:up            # Builds and starts all containers
-npm run docker:down          # Stops and removes all containers
+npm run docker:up      # Build and start all containers (port 8080)
+npm run docker:down    # Stop and remove
 ```
+
+---
+
+## Testing
+
+```bash
+npm run test:run       # Client unit tests (Vitest)
+npm run lint           # Lint all workspaces
+npm run test:api       # API E2E tests (Hurl, against local :8081)
+```
+
+Docker Compose target:
+
+```bash
+API_HOST=http://localhost:8080 npm run test:api
+```
+
+See [`docs/testing.md`](./docs/testing.md) for the full testing guide.
+
+---
 
 ## Deployment
 
-Pushing to `main` triggers the [GitHub Actions workflow](.github/workflows/deploy.yml) which:
+Pushing to `main` triggers the [GitHub Actions workflow](.github/workflows/deploy.yml):
 
-1. Builds all three Docker images and publishes them to GitHub Container Registry (GHCR).
-2. SSHs into the VM via the Cloudflare Tunnel (`ssh.pson02.io.vn`) and runs a Docker Swarm rolling update, piping `docker-stack.yml` directly from the repo into `docker stack deploy -c -` — no file needs to exist on the VM.
+1. Builds 3 Docker images → publishes to GHCR.
+2. SSHs into the VM via Cloudflare Tunnel → `docker stack deploy` (Swarm rolling update).
 
 ### GitHub Actions Secrets
 
-All secrets must be set in **Repository Settings → Secrets and Variables → Actions**.
+| Secret | Description |
+|--------|-------------|
+| `VITE_WS_URL` | WebSocket URL baked into client build |
+| `VM_SSH_HOST` | Cloudflare SSH hostname |
+| `VM_USER` / `VM_SSH_KEY` | SSH credentials for deployment |
+| `APP_JWT_SECRET` | Shared HMAC key (api-server + sync-server) |
+| `APP_INTERNAL_API_SECRET` | Shared secret for internal snapshot API |
 
-| Secret | Description | Example |
-|---|---|---|
-| `VITE_WS_URL` | WebSocket URL baked into the client at build time | `wss://collab-text-editor.pson02.io.vn/ws` |
-| `VM_SSH_HOST` | Cloudflare SSH hostname for the VM | `ssh.pson02.io.vn` |
-| `VM_USER` | SSH username on the VM | `ubuntu` |
-| `VM_SSH_KEY` | Private Ed25519 key for CI authentication (generate a dedicated key pair; add the public key to `~/.ssh/authorized_keys` on the VM) | `-----BEGIN OPENSSH PRIVATE KEY-----\n...` |
-| `APP_JWT_SECRET` | Base64-encoded HMAC-SHA256 secret used to sign JWTs. Injected into `api-server` as `APP_JWT_SECRET` and into `sync-server` as `JWT_SECRET`. | `XtVWcilMyRXDU/NTpTCsZp/V5yqM8Cv8BXNwnZ8fFyY=` |
-| `APP_INTERNAL_API_SECRET` | Shared secret that the `sync-server` sends as the `x-internal-secret` HTTP header when calling internal snapshot endpoints (`/api/internal/**`) on the `api-server`. Injected as `APP_INTERNAL_API_SECRET` into `api-server` and as `INTERNAL_API_SECRET` into `sync-server`. Generate with `openssl rand -hex 32`. | `a3f8c2...` |
+---
 
 ## Documentation
 
-See [`docs/`](./docs) for architecture documentation, collaboration integration guides, and the demo server setup walkthrough.
+| Document | Contents |
+|----------|----------|
+| [`docs/architecture.md`](./docs/architecture.md) | System overview, client layer design, sync-server, auth flow, data flow |
+| [`docs/api-server.md`](./docs/api-server.md) | REST API endpoints, security model, database schema |
+| [`docs/testing.md`](./docs/testing.md) | Vitest, Spring Boot MockMvc, and Hurl testing guides |
+| [`docs/demo-server-setup/`](./docs/demo-server-setup/) | VM, Cloudflare Tunnel, and Docker Swarm setup walkthrough |
