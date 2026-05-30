@@ -38,13 +38,12 @@ import java.util.Date;
 @Service
 public class JwtService {
 
-    /** Claim key for the user or guest role — shared with the Node sync-server. */
     public static final String CLAIM_ROLE = "role";
+    public static final String CLAIM_DISPLAY_NAME = "displayName";
+    public static final String CLAIM_EMAIL = "email";
 
     /** Role value embedded in tokens for password/OAuth authenticated users. */
     public static final String ROLE_AUTHENTICATED = "AUTHENTICATED";
-
-    /** Role value embedded in tokens for anonymous guest sessions. */
     public static final String ROLE_GUEST = "GUEST";
 
     private final SecretKey signingKey;
@@ -68,8 +67,9 @@ public class JwtService {
         long now = System.currentTimeMillis();
         return Jwts.builder()
                 .subject(user.getId().toString())
-                .claim("email", user.getEmail())
+                .claim( CLAIM_EMAIL, user.getEmail())
                 .claim(CLAIM_ROLE, ROLE_AUTHENTICATED)
+                .claim(CLAIM_DISPLAY_NAME, user.getDisplayName())
                 .issuedAt(new Date(now))
                 .expiration(new Date(now + expirationMs))
                 .signWith(signingKey)

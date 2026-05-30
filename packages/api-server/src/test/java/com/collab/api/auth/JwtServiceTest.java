@@ -63,7 +63,8 @@ class JwtServiceTest {
         Claims claims = jwtService.validateToken(token);
         assertThat(jwtService.extractSubject(claims)).isEqualTo(user.getId().toString());
         assertThat(jwtService.extractRole(claims)).isEqualTo(JwtService.ROLE_AUTHENTICATED);
-        assertThat(claims.get("email", String.class)).isEqualTo("alice@example.com");
+        assertThat(claims.get(JwtService.CLAIM_EMAIL, String.class)).isEqualTo("alice@example.com");
+        assertThat(claims.get(JwtService.CLAIM_DISPLAY_NAME, String.class)).isEqualTo("Test User");
     }
 
     // ── generateGuestToken ────────────────────────────────────────────────────
@@ -77,8 +78,9 @@ class JwtServiceTest {
         Claims claims = jwtService.validateToken(token);
         assertThat(jwtService.extractSubject(claims)).isEqualTo(guestId);
         assertThat(jwtService.extractRole(claims)).isEqualTo(JwtService.ROLE_GUEST);
-        // Guest tokens must not carry an email claim
-        assertThat(claims.get("email", String.class)).isNull();
+        // Guest tokens must not carry an email or displayName claim
+        assertThat(claims.get(JwtService.CLAIM_EMAIL, String.class)).isNull();
+        assertThat(claims.get(JwtService.CLAIM_DISPLAY_NAME, String.class)).isNull();
     }
 
     // ── validateToken ─────────────────────────────────────────────────────────

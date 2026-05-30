@@ -1,5 +1,6 @@
 package com.collab.api.room;
 
+import com.collab.api.room.dto.QuickshareResponse;
 import com.collab.api.room.dto.RoomResponse;
 import com.collab.api.room.entity.AccessMode;
 import com.collab.api.room.entity.Room;
@@ -52,19 +53,22 @@ public class RoomService {
      *
      * <ul>
      *   <li>If the caller is an authenticated Member, the room is created as
-     *       claimed immediately ({@code ownerId} set, {@code expiresAt = null}).</li>
+     *       claimed immediately ({@code ownerId} set, {@code expiresAt = null},
+     *       {@code creatorSecret = null}).</li>
      *   <li>If the caller is a Guest, the room is unclaimed ({@code ownerId = null},
-     *       {@code expiresAt = now + 24h}) and will be cleaned up automatically
-     *       by {@link RoomCleanupTask} unless a Member claims it first.</li>
+     *       {@code expiresAt = now + 24h}) and a random {@code creatorSecret} is
+     *       generated. The secret is returned only in this response — never in
+     *       subsequent {@code GET} calls — so only the creating browser session
+     *       can later trigger a claim.</li>
      * </ul>
      *
      * @param callerId The {@code sub} claim from the JWT (user UUID or guest ID string).
      * @param role     The {@code role} claim — {@link JwtService#ROLE_AUTHENTICATED}
      *                 or {@link JwtService#ROLE_GUEST}.
-     * @return The created room as a {@link RoomResponse}.
+     * @return The created room as a {@link QuickshareResponse}.
      */
     @Transactional
-    public RoomResponse createQuickshareRoom(String callerId, String role) {
+    public QuickshareResponse createQuickshareRoom(String callerId, String role) {
         String slug = generateUniqueSlug();
 
         Room.RoomBuilder builder = Room.builder()
@@ -83,31 +87,46 @@ public class RoomService {
                     .build();
             roomMemberRepository.save(ownerMembership);
 
-            return toResponse(room);
+            // Auth-user rooms are claimed immediately — no secret needed.
+            return new QuickshareResponse(
+                    room.getId(), room.getSlug(), room.getOwnerId(),
+                    true, room.getAccessMode().name(), room.getCreatedAt(), null);
         } else {
-            // Guest — unclaimed room, expires after 24 hours
+            // Guest — unclaimed room: generate a creator secret so only this
+            // browser session can later claim it.
+            String secret = UUID.randomUUID().toString();
             builder.ownerId(null)
+                   .creatorSecret(secret)
                    .expiresAt(Instant.now().plus(UNCLAIMED_ROOM_TTL_HOURS, ChronoUnit.HOURS));
             Room room = roomRepository.save(builder.build());
-            return toResponse(room);
+            return new QuickshareResponse(
+                    room.getId(), room.getSlug(), null,
+                    false, room.getAccessMode().name(), room.getCreatedAt(), secret);
         }
     }
 
     /**
      * Claims an unclaimed room on behalf of an authenticated member.
      *
-     * <p>Sets the room's {@code ownerId} to the member's ID, clears
-     * {@code expiresAt} (making the room permanent), and registers the member
-     * as an {@code OWNER} in {@code room_members}.
+     * <p>The caller must supply the {@code creatorSecret} that was returned at
+     * quickshare time. This ensures only the browser session that created the
+     * room can claim it — any other authenticated user is rejected with
+     * {@code 403 FORBIDDEN}.
      *
-     * @param roomId The room to claim.
-     * @param userId The authenticated member claiming the room.
+     * <p>On success: sets {@code ownerId}, clears {@code expiresAt} (making the
+     * room permanent), clears {@code creatorSecret} (one-time use), and
+     * registers the member as {@code OWNER} in {@code room_members}.
+     *
+     * @param roomId         The room to claim.
+     * @param userId         The authenticated member claiming the room.
+     * @param providedSecret The secret presented by the client.
      * @return The updated room as a {@link RoomResponse}.
-     * @throws ApiException {@code 404 NOT_FOUND} if the room does not exist.
-     * @throws ApiException {@code 409 CONFLICT} if the room is already claimed.
+     * @throws ApiException {@code 404 NOT_FOUND}  if the room does not exist.
+     * @throws ApiException {@code 409 CONFLICT}   if the room is already claimed.
+     * @throws ApiException {@code 403 FORBIDDEN}  if the secret is missing or wrong.
      */
     @Transactional
-    public RoomResponse claimRoom(UUID roomId, UUID userId) {
+    public RoomResponse claimRoom(UUID roomId, UUID userId, String providedSecret) {
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Room not found"));
 
@@ -115,8 +134,14 @@ public class RoomService {
             throw new ApiException(HttpStatus.CONFLICT, "Room is already claimed");
         }
 
+        // Verify the one-time creator secret.
+        if (room.getCreatorSecret() == null || !room.getCreatorSecret().equals(providedSecret)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Invalid or missing creator secret");
+        }
+
         room.setOwnerId(userId);
         room.setExpiresAt(null);
+        room.setCreatorSecret(null); // consume the one-time token
         roomRepository.save(room);
 
         RoomMember ownerMembership = RoomMember.builder()

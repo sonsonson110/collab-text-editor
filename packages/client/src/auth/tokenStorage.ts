@@ -70,3 +70,20 @@ export function getTokenRole(): string | null {
   const payload = decodePayload(token);
   return typeof payload?.["role"] === "string" ? payload["role"] : null;
 }
+
+/**
+ * Extracts the `displayName` claim from a JWT payload without network calls.
+ *
+ * Authenticated tokens carry a `displayName` claim set by the api-server.
+ * Guest tokens do not — this function returns `null` in that case so callers
+ * can fall back to a generated anonymous name.
+ *
+ * @param token A compact JWT string.
+ * @returns The user's display name, or `null` for guests / malformed tokens.
+ */
+export function getDisplayNameFromToken(token: string): string | null {
+  const payload = decodePayload(token);
+  return typeof payload?.["displayName"] === "string"
+    ? payload["displayName"]
+    : null;
+}

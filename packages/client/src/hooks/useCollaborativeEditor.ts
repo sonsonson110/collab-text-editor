@@ -43,9 +43,33 @@ interface UseCollaborativeEditorResult {
    * Reconnects the WebSocket provider with a new token while preserving the
    * local Y.Doc state. Used after claiming a room (guest → member upgrade).
    *
+   * Re-wires all awareness listeners so the new identity (display name, color)
+   * is broadcast to peers and the signed-in user can see existing peers.
+   *
    * @param newToken The new Member JWT to connect with.
    */
   reconnect: (newToken: string) => void;
+}
+
+/**
+ * Deterministically generates a hash code from a string.
+ */
+function hashCode(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0; // Convert to 32bit integer
+  }
+  return Math.abs(hash);
+}
+
+/**
+ * Deterministically generates a display name based on a user ID.
+ * This ensures consistency across multiple tabs for the same session.
+ */
+function generateDeterministicDisplayName(userId: string | null): string {
+  const hash = hashCode(userId ?? "anonymous");
+  return `User ${hash % 1000}`;
 }
 
 /**
@@ -58,8 +82,8 @@ interface UseCollaborativeEditorResult {
  * `/ws/<roomId>?token=<jwt>` — the Vite dev server proxies `/ws` to the
  * sync-server, and Nginx does the same in production.
  *
- * Returns `{ viewModel, status, users, reconnect }` — the view model is `null`
- * until the provider has connected and the editor state is ready.
+ * Returns `{ viewModel, status, users, reconnect }` — the view model is
+ * `null` until the provider has connected and the editor state is ready.
  */
 export function useCollaborativeEditor({
   roomId,
@@ -69,64 +93,147 @@ export function useCollaborativeEditor({
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const [users, setUsers] = useState<ConnectedUser[]>([]);
 
-  // Stable refs so reconnect() can access the latest provider/doc/vm without
-  // being listed as a useEffect dependency.
+  // Stable refs so reconnect() can access the latest instances without being
+  // listed as useEffect dependencies.
   const providerRef = useRef<WebsocketProvider | null>(null);
   const ydocRef = useRef<Y.Doc | null>(null);
   const vmRef = useRef<ViewModel | null>(null);
+  const editorStateRef = useRef<EditorState | null>(null);
+  const initialUserId = extractUserId(token);
+  const userHash = hashCode(initialUserId ?? "anonymous");
+
+  const colorRef = useRef<string>(
+    REMOTE_CURSOR_COLORS[userHash % REMOTE_CURSOR_COLORS.length]!,
+  );
+
+  /**
+   * Deterministic display name assigned once per hook mount and held stable for the
+   * lifetime of this session. Stored in a ref so reconnect() reuses the same
+   * name without triggering re-renders.
+   */
+  const displayNameRef = useRef<string>(generateDeterministicDisplayName(initialUserId));
+
+  /**
+   * Tracks the unsubscribe function returned by `editorState.subscribe()`
+   * inside `wireAwareness`. Called before re-subscribing on reconnect to
+   * prevent leaked listeners that reference destroyed awareness instances.
+   */
+  const cursorBroadcastUnsubRef = useRef<(() => void) | null>(null);
 
   // Derive the WS base URL: in dev the Vite proxy rewrites /ws → sync-server.
   // In production Nginx does the same. We never hardcode a port here.
   const wsBaseUrl =
-    (import.meta.env.VITE_WS_URL as string | undefined) ?? `${window.location.origin.replace(/^http/, "ws")}/ws`;
+    (import.meta.env.VITE_WS_URL as string | undefined) ??
+    `${window.location.origin.replace(/^http/, "ws")}/ws`;
 
-  useEffect(() => {
-    const ydoc = new Y.Doc();
-    ydocRef.current = ydoc;
-    const ytext = ydoc.getText("content");
-
-    const provider = new WebsocketProvider(wsBaseUrl, roomId, ydoc, {
-      connect: true,
-      params: { token },
-    });
-    providerRef.current = provider;
+  /**
+   * Wires awareness state for a given provider:
+   *   1. Sets the local user field (name + color) so peers can render our avatar.
+   *   2. Publishes `userId` so peers can deduplicate stale awareness entries that
+   *      linger after a page reload (each reload creates a new Yjs `clientID`
+   *      for the same logical user).
+   *   3. Attaches the `change` listener that builds the connected-user list and
+   *      remote cursors.
+   *   4. Re-subscribes the editor state so cursor moves are broadcast.
+   *
+   * Extracted so both the initial mount and `reconnect()` share identical wiring.
+   */
+  function wireAwareness(
+    provider: WebsocketProvider,
+    ydoc: Y.Doc,
+    ytext: Y.Text,
+    doc: CollaborativeDocument,
+    token: string,
+  ): void {
     const awareness = provider.awareness;
 
-    // Assign a random display identity for the presence bar.
-    const name = `User ${Math.floor(Math.random() * 1000)}`;
-    const color =
-      REMOTE_CURSOR_COLORS[
-        Math.floor(Math.random() * REMOTE_CURSOR_COLORS.length)
-      ]!;
-    awareness.setLocalStateField("user", { name, color });
+    // Publish our session identity to peers.
+    awareness.setLocalStateField("user", {
+      name: displayNameRef.current,
+      color: colorRef.current,
+    });
 
-    const doc = new CollaborativeDocument(ytext);
+    // Publish userId and lastActive timestamp so peers can deduplicate tabs
+    // and stale awareness entries by picking the most recently active session.
+    const localUserId = extractUserId(token);
+    if (localUserId !== null) {
+      awareness.setLocalStateField("userId", localUserId);
+    }
+    awareness.setLocalStateField("lastActive", Date.now());
 
-    /**
-     * Derive the connected-user list and remote cursor positions from the
-     * awareness states. Called on every awareness `change` event.
-     */
     awareness.on("change", () => {
       const states = awareness.getStates();
-      const cursors: RemoteCursorAbsolute[] = [];
-      const connectedUsers: ConnectedUser[] = [];
+      
+      // Pass 1: Deduplicate active clients by userId based on lastActive timestamp.
+      // We always force the local client to win for its own presence bar.
+      const bestClientPerUser = new Map<
+        string,
+        { clientID: number; entry: ConnectedUser; lastActive: number }
+      >();
 
       states.forEach((state: Record<string, unknown>, clientID: number) => {
-        const userInfo = state["user"] as
-          | { name: string; color: string }
-          | undefined;
+        const userInfo = state["user"] as { name: string; color: string } | undefined;
         if (!userInfo) {
           return;
         }
 
-        connectedUsers.push({
+        const stateUserId = typeof state["userId"] === "string" ? state["userId"] : null;
+        const isLocal = clientID === ydoc.clientID;
+        
+        const key = stateUserId !== null ? stateUserId : `clientID:${clientID}`;
+        const lastActive = typeof state["lastActive"] === "number" ? state["lastActive"] : 0;
+        
+        const entry: ConnectedUser = {
           clientID,
           name: userInfo.name,
           color: userInfo.color,
-          isLocal: clientID === ydoc.clientID,
-        });
+          isLocal,
+        };
 
-        if (clientID === ydoc.clientID) {
+        const existing = bestClientPerUser.get(key);
+        
+        if (isLocal) {
+           bestClientPerUser.set(key, { clientID, entry, lastActive: Infinity });
+        } else if (!existing) {
+           bestClientPerUser.set(key, { clientID, entry, lastActive });
+        } else {
+           if (existing.lastActive !== Infinity && lastActive > existing.lastActive) {
+               bestClientPerUser.set(key, { clientID, entry, lastActive });
+           }
+        }
+      });
+
+      const connectedUsers: ConnectedUser[] = [];
+      const activeClientIds = new Set<number>();
+
+      bestClientPerUser.forEach((value) => {
+        connectedUsers.push(value.entry);
+        activeClientIds.add(value.clientID);
+      });
+
+      // Pass 2: Collect valid remote cursors for the winning active clients only.
+      const cursors: RemoteCursorAbsolute[] = [];
+
+      states.forEach((state: Record<string, unknown>, clientID: number) => {
+        // Only render cursors for the most recently active client per user
+        if (!activeClientIds.has(clientID)) {
+          return;
+        }
+
+        const isLocal = clientID === ydoc.clientID;
+        if (isLocal) {
+          return;
+        }
+
+        const stateUserId = typeof state["userId"] === "string" ? state["userId"] : null;
+        
+        // Suppress self-cursors: don't show cursors from other tabs of the local user
+        if (stateUserId !== null && stateUserId === localUserId) {
+          return;
+        }
+
+        const userInfo = state["user"] as { name: string; color: string } | undefined;
+        if (!userInfo) {
           return;
         }
 
@@ -172,40 +279,73 @@ export function useCollaborativeEditor({
       setUsers(connectedUsers);
     });
 
-    // Track connection status for the UI indicator.
-    provider.on("status", ({ status: s }: { status: string }) => {
-      setStatus(s as ConnectionStatus);
+    // Clean up previous cursor-broadcast subscription before re-subscribing.
+    // Without this, reconnect() would stack listeners, with stale ones
+    // referencing the destroyed awareness instance.
+    if (cursorBroadcastUnsubRef.current) {
+      cursorBroadcastUnsubRef.current();
+      cursorBroadcastUnsubRef.current = null;
+    }
+
+    // Re-broadcast local cursor after every editor state change.
+    const editorState = editorStateRef.current;
+    if (editorState) {
+      cursorBroadcastUnsubRef.current = editorState.subscribe(() => {
+        awareness.setLocalStateField("lastActive", Date.now());
+        const activeCursor = editorState.getCursor();
+        broadcastCursor(
+          awareness,
+          ytext,
+          doc,
+          activeCursor.anchor,
+          activeCursor.active,
+        );
+      });
+    }
+  }
+
+  useEffect(() => {
+    const ydoc = new Y.Doc();
+    ydocRef.current = ydoc;
+    const ytext = ydoc.getText("content");
+
+    const provider = new WebsocketProvider(wsBaseUrl, roomId, ydoc, {
+      connect: true,
+      params: { token },
     });
+    providerRef.current = provider;
+
+    const doc = new CollaborativeDocument(ytext);
 
     const cursor = new Cursor(new Position(0, 0));
     const undoManager = new YjsUndoManager(ytext);
     const editorState = new EditorState(doc, cursor, undoManager, ydoc, ytext);
-
-    // Broadcast local cursor position to peers after every state change.
-    editorState.subscribe(() => {
-      const activeCursor = editorState.getCursor();
-      broadcastCursor(
-        awareness,
-        ytext,
-        doc,
-        activeCursor.anchor,
-        activeCursor.active,
-      );
-    });
+    editorStateRef.current = editorState;
 
     const vm = new ViewModel(editorState);
     vmRef.current = vm;
     setViewModel(vm);
 
+    wireAwareness(provider, ydoc, ytext, doc, token);
+
+    // Track connection status for the UI indicator.
+    provider.on("status", ({ status: s }: { status: string }) => {
+      setStatus(s as ConnectionStatus);
+    });
+
     return () => {
       provider.destroy();
       providerRef.current = null;
     };
-  }, [roomId, token, wsBaseUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, wsBaseUrl]);
 
   /**
    * Swaps the WebSocket provider to use a new token, preserving the Y.Doc.
-   * Call this after a guest claims a room and receives a Member JWT.
+   *
+   * Re-wires all awareness listeners so the updated identity is broadcast to
+   * peers. The session display name is intentionally preserved across reconnects
+   * so peers see a stable name even after a guest upgrades to a member token.
    */
   const reconnect = useCallback(
     (newToken: string) => {
@@ -213,6 +353,7 @@ export function useCollaborativeEditor({
         return;
       }
       const ydoc = ydocRef.current;
+      const ytext = ydoc.getText("content");
       providerRef.current.destroy();
 
       const newProvider = new WebsocketProvider(wsBaseUrl, roomId, ydoc, {
@@ -221,12 +362,37 @@ export function useCollaborativeEditor({
       });
       providerRef.current = newProvider;
 
+      const doc = new CollaborativeDocument(ytext);
+      wireAwareness(newProvider, ydoc, ytext, doc, newToken);
+
       newProvider.on("status", ({ status: s }: { status: string }) => {
         setStatus(s as ConnectionStatus);
       });
     },
+    // wireAwareness is defined in the render scope; roomId and wsBaseUrl are
+    // the only external stable dependencies.
     [roomId, wsBaseUrl],
   );
 
   return { viewModel, status, users, reconnect };
+}
+
+/**
+ * Extracts the `sub` claim from a JWT without signature verification.
+ *
+ * Used only for awareness deduplication (identifying stale entries from the
+ * same logical user across reconnects). Returns `null` for malformed tokens.
+ */
+function extractUserId(token: string): string | null {
+  try {
+    const [, payloadB64] = token.split(".");
+    if (!payloadB64) {
+      return null;
+    }
+    const payload = JSON.parse(atob(payloadB64)) as Record<string, unknown>;
+    const sub = payload["sub"];
+    return typeof sub === "string" ? sub : null;
+  } catch {
+    return null;
+  }
 }

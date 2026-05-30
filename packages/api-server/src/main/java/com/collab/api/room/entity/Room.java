@@ -61,6 +61,17 @@ public class Room {
     private UUID ownerId;
 
     /**
+     * One-time opaque token that proves the presenter was the browser session
+     * that created this room.
+     *
+     * <p>Generated at quickshare time for guest-created rooms; {@code null} for
+     * rooms created by authenticated members (they are claimed immediately).
+     * Cleared to {@code null} after a successful claim — single-use only.
+     */
+    @Column(nullable = true)
+    private String creatorSecret;
+
+    /**
      * Determines who can access and edit this room.
      * Defaults to {@link AccessMode#PUBLIC_EDIT} for quickshare rooms.
      */

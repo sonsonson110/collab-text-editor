@@ -8,8 +8,6 @@ interface AuthResponse {
 }
 
 interface Props {
-  /** The room's UUID — passed to `POST /api/rooms/:id/claim` after login. */
-  roomId: string;
   /**
    * Called with the new Member JWT after successful login/register.
    * The parent is responsible for claiming the room and reconnecting the WS.
@@ -22,11 +20,11 @@ interface Props {
 type Mode = "login" | "register";
 
 /**
- * Modal that lets a guest sign in or register to claim the current room.
+ * Modal that lets a guest sign in or register.
  *
  * On success, passes the Member JWT to `onSuccess` so the parent can:
  *   1. Persist the token.
- *   2. Call `POST /api/rooms/:id/claim`.
+ *   2. Call `POST /api/rooms/:id/claim` with the stored creator secret.
  *   3. Reconnect the WebSocket with the new token.
  */
 export function AuthModal({ onSuccess, onClose }: Props) {

@@ -9,6 +9,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Map;
+
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -46,10 +48,24 @@ class RoomControllerTest {
                 .get("token").asText();
     }
 
+    /**
+     * Creates a guest quickshare room and returns a two-element array:
+     * {@code [roomId, creatorSecret]}.
+     */
+    private String[] createGuestRoomAndGetIdAndSecret() throws Exception {
+        var token = getGuestToken();
+        var result = mockMvc.perform(post("/api/rooms/quickshare")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isCreated())
+                .andReturn();
+        var tree = json.readTree(result.getResponse().getContentAsString());
+        return new String[]{ tree.get("id").asText(), tree.get("creatorSecret").asText() };
+    }
+
     // ── POST /api/rooms/quickshare ────────────────────────────────────────────
 
     @Test
-    void quickshare_withGuestToken_returnsCreatedWithSlug() throws Exception {
+    void quickshare_withGuestToken_returnsUnclaimedWithSecret() throws Exception {
         var token = getGuestToken();
 
         mockMvc.perform(post("/api/rooms/quickshare")
@@ -59,11 +75,13 @@ class RoomControllerTest {
                 .andExpect(jsonPath("$.slug").isNotEmpty())
                 .andExpect(jsonPath("$.isClaimed").value(false))
                 .andExpect(jsonPath("$.accessMode").value("PUBLIC_EDIT"))
-                .andExpect(jsonPath("$.ownerId").isEmpty());
+                .andExpect(jsonPath("$.ownerId").isEmpty())
+                // Guest rooms must include a non-empty creatorSecret.
+                .andExpect(jsonPath("$.creatorSecret").isNotEmpty());
     }
 
     @Test
-    void quickshare_withMemberToken_returnsClaimed() throws Exception {
+    void quickshare_withMemberToken_returnsClaimedWithoutSecret() throws Exception {
         var token = registerAndGetToken("alice@example.com");
 
         mockMvc.perform(post("/api/rooms/quickshare")
@@ -72,7 +90,9 @@ class RoomControllerTest {
                 .andExpect(jsonPath("$.id").isNotEmpty())
                 .andExpect(jsonPath("$.slug").isNotEmpty())
                 .andExpect(jsonPath("$.isClaimed").value(true))
-                .andExpect(jsonPath("$.ownerId").isNotEmpty());
+                .andExpect(jsonPath("$.ownerId").isNotEmpty())
+                // Auth-user rooms are claimed immediately — no secret issued.
+                .andExpect(jsonPath("$.creatorSecret").isEmpty());
     }
 
     @Test
@@ -84,26 +104,57 @@ class RoomControllerTest {
     // ── POST /api/rooms/{id}/claim ────────────────────────────────────────────
 
     @Test
-    void claimRoom_unclaimedRoom_returnsOk() throws Exception {
-        var guestToken = getGuestToken();
-        var createResult = mockMvc.perform(post("/api/rooms/quickshare")
-                        .header("Authorization", "Bearer " + guestToken))
-                .andExpect(status().isCreated())
-                .andReturn();
-        var roomId = json.readTree(createResult.getResponse().getContentAsString())
-                .get("id").asText();
+    void claimRoom_withCorrectSecret_returnsOk() throws Exception {
+        var idAndSecret = createGuestRoomAndGetIdAndSecret();
+        var roomId = idAndSecret[0];
+        var secret = idAndSecret[1];
 
         var memberToken = registerAndGetToken("bob@example.com");
-        
+        var body = json.writeValueAsString(Map.of("creatorSecret", secret));
+
         mockMvc.perform(post("/api/rooms/" + roomId + "/claim")
-                        .header("Authorization", "Bearer " + memberToken))
+                        .header("Authorization", "Bearer " + memberToken)
+                        .contentType(APPLICATION_JSON)
+                        .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isClaimed").value(true))
                 .andExpect(jsonPath("$.ownerId").isNotEmpty());
     }
 
     @Test
+    void claimRoom_withWrongSecret_returns403() throws Exception {
+        var idAndSecret = createGuestRoomAndGetIdAndSecret();
+        var roomId = idAndSecret[0];
+
+        var memberToken = registerAndGetToken("bob@example.com");
+        var body = json.writeValueAsString(Map.of("creatorSecret", "not-the-right-secret"));
+
+        mockMvc.perform(post("/api/rooms/" + roomId + "/claim")
+                        .header("Authorization", "Bearer " + memberToken)
+                        .contentType(APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void claimRoom_withMissingSecret_returns403() throws Exception {
+        var idAndSecret = createGuestRoomAndGetIdAndSecret();
+        var roomId = idAndSecret[0];
+
+        var memberToken = registerAndGetToken("bob@example.com");
+        // Send null creatorSecret — treated as missing.
+        var body = json.writeValueAsString(Map.of("creatorSecret", ""));
+
+        mockMvc.perform(post("/api/rooms/" + roomId + "/claim")
+                        .header("Authorization", "Bearer " + memberToken)
+                        .contentType(APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void claimRoom_alreadyClaimed_returns409() throws Exception {
+        // Auth-user-created rooms are claimed immediately.
         var aliceToken = registerAndGetToken("alice@example.com");
         var createResult = mockMvc.perform(post("/api/rooms/quickshare")
                         .header("Authorization", "Bearer " + aliceToken))
@@ -113,27 +164,44 @@ class RoomControllerTest {
                 .get("id").asText();
 
         var bobToken = registerAndGetToken("bob@example.com");
+        var body = json.writeValueAsString(Map.of("creatorSecret", "any"));
 
         mockMvc.perform(post("/api/rooms/" + roomId + "/claim")
-                        .header("Authorization", "Bearer " + bobToken))
+                        .header("Authorization", "Bearer " + bobToken)
+                        .contentType(APPLICATION_JSON)
+                        .content(body))
                 .andExpect(status().isConflict());
     }
 
     @Test
     void claimRoom_guestToken_returns403() throws Exception {
-        var guestToken1 = getGuestToken();
-        var createResult = mockMvc.perform(post("/api/rooms/quickshare")
-                        .header("Authorization", "Bearer " + guestToken1))
-                .andExpect(status().isCreated())
-                .andReturn();
-        var roomId = json.readTree(createResult.getResponse().getContentAsString())
-                .get("id").asText();
+        // @PreAuthorize("hasRole('AUTHENTICATED')") rejects guest JWTs before
+        // the service layer is reached.
+        var idAndSecret = createGuestRoomAndGetIdAndSecret();
+        var roomId = idAndSecret[0];
+        var secret = idAndSecret[1];
 
-        var guestToken2 = getGuestToken();
+        var guestToken = getGuestToken();
+        var body = json.writeValueAsString(Map.of("creatorSecret", secret));
 
         mockMvc.perform(post("/api/rooms/" + roomId + "/claim")
-                        .header("Authorization", "Bearer " + guestToken2))
+                        .header("Authorization", "Bearer " + guestToken)
+                        .contentType(APPLICATION_JSON)
+                        .content(body))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void claimRoom_unauthenticated_returns401() throws Exception {
+        var idAndSecret = createGuestRoomAndGetIdAndSecret();
+        var roomId = idAndSecret[0];
+        var secret = idAndSecret[1];
+        var body = json.writeValueAsString(Map.of("creatorSecret", secret));
+
+        mockMvc.perform(post("/api/rooms/" + roomId + "/claim")
+                        .contentType(APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnauthorized());
     }
 
     // ── GET /api/rooms/{id} & /api/rooms/by-slug/{slug} ─────────────────────
@@ -155,17 +223,20 @@ class RoomControllerTest {
         mockMvc.perform(get("/api/rooms/" + roomId)
                         .header("Authorization", "Bearer " + readerToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(roomId));
+                .andExpect(jsonPath("$.id").value(roomId))
+                // GET endpoints must never expose the creatorSecret.
+                .andExpect(jsonPath("$.creatorSecret").doesNotExist());
 
         mockMvc.perform(get("/api/rooms/by-slug/" + slug)
                         .header("Authorization", "Bearer " + readerToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.slug").value(slug));
+                .andExpect(jsonPath("$.slug").value(slug))
+                .andExpect(jsonPath("$.creatorSecret").doesNotExist());
     }
 
     @Test
     void getRoomById_privateRoom_nonMember_returns403() throws Exception {
-        // Not testing private rooms yet as they can't be created via quickshare without changing access_mode
-        // Skipped intentionally for this phase.
+        // Not testing private rooms yet as they can't be created via quickshare
+        // without changing access_mode. Skipped intentionally for this phase.
     }
 }

@@ -1,5 +1,7 @@
 package com.collab.api.room;
 
+import com.collab.api.room.dto.ClaimRequest;
+import com.collab.api.room.dto.QuickshareResponse;
 import com.collab.api.room.dto.RoomResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -8,6 +10,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -37,16 +40,17 @@ public class RoomController {
      *
      * <p>Accepts both Guest JWTs ({@code role=GUEST}) and Member JWTs
      * ({@code role=AUTHENTICATED}). The service decides ownership and expiry
-     * based on the caller's role.
+     * based on the caller's role. Guest-created rooms include a
+     * {@code creatorSecret} in the response — auth-user-created rooms do not.
      *
      * @return {@code 201 Created} with the new room's details including its slug.
      */
     @PostMapping("/quickshare")
-    public ResponseEntity<RoomResponse> quickshare(Authentication authentication) {
+    public ResponseEntity<QuickshareResponse> quickshare(Authentication authentication) {
         String callerId = authentication.getName();
         String role = authentication.getAuthorities().iterator().next().getAuthority()
                 .replace("ROLE_", "");
-        RoomResponse response = roomService.createQuickshareRoom(callerId, role);
+        QuickshareResponse response = roomService.createQuickshareRoom(callerId, role);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -56,16 +60,21 @@ public class RoomController {
      * <p>Requires a Member JWT ({@code role=AUTHENTICATED}). Guest tokens are rejected
      * with {@code 403 Forbidden}.
      *
+     * <p>The request body must contain the {@code creatorSecret} returned at
+     * quickshare time. Any other authenticated user presenting the wrong or
+     * absent secret is rejected with {@code 403 Forbidden}.
+     *
      * @return {@code 200 OK} with the updated room details.
      */
     @PostMapping("/{id}/claim")
     @PreAuthorize("hasRole('AUTHENTICATED')")
     public RoomResponse claimRoom(
             @PathVariable UUID id,
+            @RequestBody ClaimRequest request,
             Authentication authentication
     ) {
         UUID userId = UUID.fromString(authentication.getName());
-        return roomService.claimRoom(id, userId);
+        return roomService.claimRoom(id, userId, request.creatorSecret());
     }
 
     /**

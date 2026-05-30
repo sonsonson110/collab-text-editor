@@ -55,6 +55,15 @@ const WS_CLOSE_UNAUTHORIZED = 4401;
  */
 const connectionClaims = new WeakMap<WebSocket, VerifiedClaims>();
 
+/**
+ * Maps each WebSocket to the set of Yjs awareness clientIDs it has registered.
+ *
+ * Populated by inspecting incoming awareness updates from that socket.
+ * On disconnect, these IDs are removed from the room awareness so peers
+ * immediately stop rendering stale cursors for the disconnected client.
+ */
+const connectionAwarenessClients = new WeakMap<WebSocket, Set<number>>();
+
 // ---------------------------------------------------------------------------
 // Room management
 // ---------------------------------------------------------------------------
@@ -165,15 +174,9 @@ function handleConnection(
 ): void {
   room.connections.add(ws);
 
-  // Retrieve the identity attached during the upgrade handshake.
-  const claims = connectionClaims.get(ws)!; // guaranteed by verifyClient
-
-  // ── Seed Yjs awareness with the authenticated identity ──────────────────
-  // This is the Phase 4 foundation: the editor UI reads `userId` and `role`
-  // from the peer's awareness state to determine permissions and display names
-  // without any additional round-trip to the server.
-  room.awareness.setLocalStateField("userId", claims.userId);
-  room.awareness.setLocalStateField("role", claims.role);
+  // Identity (userId, role) is published by each client in its own awareness
+  // state — the server must not set these on its shared awareness entry because
+  // each new connection would overwrite the previous one.
 
   // ── Initiate sync handshake with the new client ──────────────────────────
   // Send SyncStep1 (our state vector) so the client can reply with the diff.
@@ -220,9 +223,29 @@ function handleConnection(
           ws.send(encoding.toUint8Array(replyEncoder));
         }
       } else if (msgType === MSG_AWARENESS) {
+        const update = decoding.readVarUint8Array(decoder);
+
+        // Track which awareness clientIDs this socket has registered so we can
+        // clean them up precisely on disconnect.
+        try {
+          const updateDecoder = decoding.createDecoder(update);
+          const len = decoding.readVarUint(updateDecoder);
+          const tracked = connectionAwarenessClients.get(ws) ?? new Set<number>();
+          for (let i = 0; i < len; i++) {
+            tracked.add(decoding.readVarUint(updateDecoder));
+            // Skip the clock and state (we only need the clientID).
+            decoding.readVarUint(updateDecoder); // clock
+            decoding.readVarUint8Array(updateDecoder); // encoded state
+          }
+          connectionAwarenessClients.set(ws, tracked);
+        } catch {
+          // Parsing errors here are non-fatal — awareness cleanup on disconnect
+          // may be incomplete, but the y-protocols timeout will eventually clear it.
+        }
+
         awarenessProtocol.applyAwarenessUpdate(
           room.awareness,
-          decoding.readVarUint8Array(decoder),
+          update,
           ws,
         );
       }
@@ -240,13 +263,20 @@ function handleConnection(
 
   ws.on("close", () => {
     room.connections.delete(ws);
-    // Remove the disconnected client's awareness state so other clients stop
-    // rendering their cursor.
-    awarenessProtocol.removeAwarenessStates(
-      room.awareness,
-      [room.doc.clientID],
-      null,
-    );
+
+    // Remove the disconnected client's awareness states so peers immediately
+    // stop rendering their cursor. We use the clientIDs we tracked from
+    // incoming awareness updates rather than room.doc.clientID (which is the
+    // server-side Yjs doc identity, not the client's).
+    const clientIds = connectionAwarenessClients.get(ws);
+    if (clientIds && clientIds.size > 0) {
+      awarenessProtocol.removeAwarenessStates(
+        room.awareness,
+        Array.from(clientIds),
+        null,
+      );
+    }
+
     // When the last client leaves, persist a final snapshot and tear down the room.
     if (room.connections.size === 0) {
       void stopTracking(roomName, room.doc).then(() => {
