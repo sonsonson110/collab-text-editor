@@ -94,24 +94,6 @@ body {
   animation: blink 1s step-end infinite;
 }
 
-.gutter {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  background-color: var(--background-color);
-  color: #888;
-  text-align: right;
-  padding-right: 1ch;
-  user-select: none;
-  border-right: 1px solid #444;
-  z-index: 2;
-}
-
-.gutter-line {
-  line-height: var(--line-height);
-  white-space: pre;
-  cursor: pointer;
-}
 
 .editor-content {
   flex-grow: 1;

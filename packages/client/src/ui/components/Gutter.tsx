@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import type { ViewLine } from "@/view/types";
 
 interface Props {
@@ -15,12 +16,18 @@ export function Gutter({
   onLineNumberMouseDown,
 }: Props) {
   return (
-    <div className="gutter" style={{ width }}>
+    <div
+      className={cn(
+        "shrink-0 flex flex-col bg-(--background-color) text-muted-foreground",
+        "text-right pr-[1ch] select-none border-r border-border z-2"
+      )}
+      style={{ width }}
+    >
       <div style={{ transform: `translateY(${offsetY}px)` }}>
         {lines.map((line) => (
           <div
             key={line.lineNumber}
-            className="gutter-line"
+            className="leading-(--line-height) whitespace-pre cursor-pointer hover:text-foreground transition-colors duration-150"
             onMouseDown={(e) => onLineNumberMouseDown(e, line.lineNumber)}
           >
             {line.lineNumber + 1}
