@@ -4,6 +4,7 @@ import { ensureToken } from "@/auth/authService";
 import { setToken } from "@/auth/tokenStorage";
 import { apiPost } from "@/api/apiClient";
 import type { QuickshareResponse } from "@/api/types";
+import { Button } from "@/components/ui/button";
 
 /** localStorage key prefix used to store the per-room creator secret. */
 const CREATOR_SECRET_KEY_PREFIX = "creator:";
@@ -54,18 +55,18 @@ export function LandingPage() {
   }
 
   return (
-    <div className="flex h-screen items-center justify-center bg-neutral-950">
+    <div className="flex h-screen items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-4">
-        <button
+        <Button
           id="share-code-now-btn"
+          size="lg"
           onClick={() => void handleShareNow()}
           disabled={loading}
-          className="px-6 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-semibold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? "Creating room…" : "Share Code Now"}
-        </button>
+        </Button>
         {error !== null && (
-          <p className="text-red-400 text-xs">{error}</p>
+          <p className="text-destructive text-xs">{error}</p>
         )}
       </div>
     </div>

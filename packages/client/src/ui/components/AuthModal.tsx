@@ -1,5 +1,15 @@
 import { useState } from "react";
 import { setToken } from "@/auth/tokenStorage";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface AuthResponse {
   token: string;
@@ -72,90 +82,85 @@ export function AuthModal({ onSuccess, onClose }: Props) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Sign in to save room"
-    >
-      <div className="relative w-full max-w-sm bg-neutral-900 border border-neutral-700 rounded-xl p-6 shadow-2xl">
-        <button
-          id="auth-modal-close-btn"
-          onClick={onClose}
-          className="absolute top-4 right-4 text-neutral-500 hover:text-neutral-300 text-lg leading-none"
-          aria-label="Close"
-        >
-          ✕
-        </button>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>
+            {mode === "login" ? "Sign in" : "Create account"}
+          </DialogTitle>
+          <DialogDescription>
+            Save this room permanently to your account.
+          </DialogDescription>
+        </DialogHeader>
 
-        <h2 className="text-white font-semibold text-base mb-1">
-          {mode === "login" ? "Sign in" : "Create account"}
-        </h2>
-        <p className="text-neutral-400 text-xs mb-5">
-          Save this room permanently to your account.
-        </p>
-
-        <form onSubmit={(e) => { void handleSubmit(e); }} className="flex flex-col gap-3">
+        <form onSubmit={(e) => { void handleSubmit(e); }} className="flex flex-col gap-3 pt-2">
           {mode === "register" && (
-            <input
-              id="auth-display-name"
-              type="text"
-              placeholder="Display name"
-              value={displayName}
-              onChange={(e) => { setDisplayName(e.target.value); }}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="auth-display-name">Display name</Label>
+              <Input
+                id="auth-display-name"
+                type="text"
+                placeholder="Display name"
+                value={displayName}
+                onChange={(e) => { setDisplayName(e.target.value); }}
+                required
+              />
+            </div>
+          )}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="auth-email">Email</Label>
+            <Input
+              id="auth-email"
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); }}
               required
-              className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm placeholder-neutral-500 focus:outline-none focus:border-indigo-500"
             />
-          )}
-          <input
-            id="auth-email"
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => { setEmail(e.target.value); }}
-            required
-            className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm placeholder-neutral-500 focus:outline-none focus:border-indigo-500"
-          />
-          <input
-            id="auth-password"
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => { setPassword(e.target.value); }}
-            required
-            className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm placeholder-neutral-500 focus:outline-none focus:border-indigo-500"
-          />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="auth-password">Password</Label>
+            <Input
+              id="auth-password"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => { setPassword(e.target.value); }}
+              required
+            />
+          </div>
           {error !== null && (
-            <p className="text-red-400 text-xs">{error}</p>
+            <p className="text-destructive text-xs">{error}</p>
           )}
-          <button
+          <Button
             id="auth-submit-btn"
             type="submit"
             disabled={loading}
-            className="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full"
           >
             {loading
               ? "Please wait…"
               : mode === "login"
               ? "Sign in"
               : "Create account"}
-          </button>
+          </Button>
         </form>
 
-        <p className="mt-4 text-center text-neutral-500 text-xs">
+        <p className="text-center text-muted-foreground text-xs mt-2">
           {mode === "login" ? "No account?" : "Already have one?"}{" "}
           <button
             id="auth-mode-toggle-btn"
+            type="button"
             onClick={() => {
               setMode(mode === "login" ? "register" : "login");
               setError(null);
             }}
-            className="text-indigo-400 hover:text-indigo-300 underline"
+            className="text-primary underline hover:text-primary/80 transition-colors"
           >
             {mode === "login" ? "Register" : "Sign in"}
           </button>
         </p>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

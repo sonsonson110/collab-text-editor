@@ -20,4 +20,18 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // shadcn-generated UI primitives and theme helpers legitimately co-export
+    // variant helpers (buttonVariants, badgeVariants) alongside components.
+    // The ThemeProvider co-exports its Theme type and useTheme hook.
+    // Relaxing react-refresh here is intentional and safe — these are not
+    // hot-reloadable boundaries but library-style files.
+    files: [
+      "src/components/ui/**/*.{ts,tsx}",
+      "src/components/theme/**/*.{ts,tsx}",
+    ],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
 ]);

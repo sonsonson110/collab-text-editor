@@ -1,6 +1,11 @@
-import clsx from "clsx";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConnectedUser } from "@/collaboration/awareness";
+import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 /** WebSocket connection state exposed to UI components. */
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
@@ -24,6 +29,9 @@ interface Props {
  *
  * The bar scrolls horizontally via normal mouse-wheel (deltaY is redirected)
  * and shows inset shadows on each overflowing edge as a scroll affordance.
+ *
+ * Each username is wrapped in a {@link Tooltip} that shows their display name
+ * and role on hover.
  */
 export function UserPresenceBar({ users, connectionStatus }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -71,10 +79,10 @@ export function UserPresenceBar({ users, connectionStatus }: Props) {
   return (
     <div
       ref={scrollRef}
-      className={clsx(
+      className={cn(
         "presence-bar",
-        "flex items-center gap-2 px-3 pb-0.5 pt-1 text-xs font-mono",
-        "border-b border-neutral-700 bg-neutral-900 text-neutral-400",
+        "flex items-center gap-2 h-6 px-3 text-xs font-mono",
+        "border-b border-border bg-muted/30 text-muted-foreground",
         "overflow-x-auto scrollbar-hide",
         canScrollLeft && "presence-bar--shadow-left",
         canScrollRight && "presence-bar--shadow-right",
@@ -87,14 +95,22 @@ export function UserPresenceBar({ users, connectionStatus }: Props) {
       />
       {users.map((user, i) => (
         <span key={user.clientID} className="flex items-center gap-2">
-          {i > 0 && <span className="text-neutral-600">·</span>}
-          <span
-            className="font-medium whitespace-nowrap"
-            style={{ color: user.color }}
-          >
-            {user.name}
-            {user.isLocal ? " (you)" : ""}
-          </span>
+          {i > 0 && <span className="text-border">·</span>}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                className="font-medium whitespace-nowrap cursor-default"
+                style={{ color: user.color }}
+              >
+                {user.name}
+                {user.isLocal ? " (you)" : ""}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="font-mono text-xs">
+              {user.name}
+              {user.isLocal ? " — you" : ""}
+            </TooltipContent>
+          </Tooltip>
         </span>
       ))}
     </div>

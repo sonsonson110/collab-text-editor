@@ -6,6 +6,9 @@ import { AuthModal } from "@/ui/components/AuthModal";
 import type { RoomResponse } from "@/api/types";
 import { getTokenRole } from "@/auth/tokenStorage";
 import { apiPost } from "@/api/apiClient";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 
 /** localStorage key prefix that mirrors the one written by LandingPage. */
 const CREATOR_SECRET_KEY_PREFIX = "creator:";
@@ -74,7 +77,8 @@ export function CollaborationLayout({ roomId, token, room }: Props) {
     return (
       <div className="flex flex-col h-full">
         <UserPresenceBar users={users} connectionStatus={status} />
-        <div className="flex-1 flex items-center justify-center text-neutral-500 font-mono text-sm">
+        <div className="flex-1 flex items-center justify-center text-muted-foreground gap-2 font-mono text-sm">
+          <Spinner className="size-4" />
           Connecting…
         </div>
       </div>
@@ -84,20 +88,24 @@ export function CollaborationLayout({ roomId, token, room }: Props) {
   return (
     <div className="flex flex-col h-full">
       {showClaimBanner && (
-        <div className="flex items-center justify-between px-4 py-2 bg-amber-900/40 border-b border-amber-700/50 text-amber-300 text-xs font-mono">
-          <span>
-            You are editing as a Guest. Sign in to save this room permanently.
-          </span>
-          <button
-            id="sign-in-to-claim-btn"
-            onClick={() => {
-              setShowAuthModal(true);
-            }}
-            className="ml-4 px-3 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs transition-colors"
-          >
-            Sign In
-          </button>
-        </div>
+        <Alert className="rounded-none border-x-0 border-t-0 border-amber-600/60 bg-amber-500/10 py-2 px-4">
+          <AlertDescription className="flex items-center justify-between text-amber-700 dark:text-amber-300 font-mono text-xs">
+            <span>
+              You are editing as a Guest. Sign in to save this room permanently.
+            </span>
+            <Button
+              id="sign-in-to-claim-btn"
+              variant="outline"
+              size="sm"
+              className="ml-4 border-amber-600/60 text-amber-700 hover:bg-amber-600/20 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-300"
+              onClick={() => {
+                setShowAuthModal(true);
+              }}
+            >
+              Sign In
+            </Button>
+          </AlertDescription>
+        </Alert>
       )}
       <UserPresenceBar users={users} connectionStatus={status} />
       <div className="flex-1 min-h-0">

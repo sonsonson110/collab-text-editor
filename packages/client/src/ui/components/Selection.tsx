@@ -34,7 +34,7 @@ export function Selection({ rects }: Props) {
               left,
               width,
               height: LINE_HEIGHT,
-              backgroundColor: "rgba(255,255,255,0.25)",
+              backgroundColor: "var(--selection-color)",
             }}
           />
         );

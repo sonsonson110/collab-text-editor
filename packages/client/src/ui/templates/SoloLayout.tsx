@@ -1,5 +1,6 @@
 import { useSoloEditor } from "@/hooks/useSoloEditor";
 import { EditorView } from "@/ui/EditorView";
+import { Spinner } from "@/components/ui/spinner";
 
 /**
  * Template layout for a solo (offline) editing session.
@@ -14,7 +15,8 @@ export function SoloLayout() {
   if (!viewModel) {
     return (
       <div className="flex flex-col h-screen">
-        <div className="flex-1 flex items-center justify-center text-neutral-500 font-mono text-sm">
+        <div className="flex-1 flex items-center justify-center gap-2 text-muted-foreground font-mono text-sm">
+          <Spinner className="size-4" />
           Loading…
         </div>
       </div>

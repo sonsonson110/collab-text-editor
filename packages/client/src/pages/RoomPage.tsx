@@ -7,6 +7,7 @@ import type { RoomResponse } from "@/api/types";
 import { AppLayout } from "@/ui/templates/AppLayout";
 import { EditorSetup } from "@/ui/EditorSetup";
 import { CollaborationLayout } from "@/ui/templates/CollaborationLayout";
+import { Spinner } from "@/components/ui/spinner";
 
 type PageState =
   | { phase: "loading" }
@@ -78,7 +79,8 @@ export function RoomPage() {
 
   if (state.phase === "loading") {
     return (
-      <div className="flex h-screen items-center justify-center bg-neutral-950 text-neutral-500 font-mono text-sm">
+      <div className="flex h-screen items-center justify-center bg-background gap-2 text-muted-foreground font-mono text-sm">
+        <Spinner className="size-4" />
         Loading room…
       </div>
     );
@@ -86,7 +88,7 @@ export function RoomPage() {
 
   if (state.phase === "error") {
     return (
-      <div className="flex h-screen items-center justify-center bg-neutral-950 text-red-400 font-mono text-sm">
+      <div className="flex h-screen items-center justify-center bg-background text-destructive font-mono text-sm">
         {state.message}
       </div>
     );

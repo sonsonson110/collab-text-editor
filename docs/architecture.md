@@ -113,8 +113,23 @@ React components that read from `IViewModel` and dispatch `Command`s.
 | `EditorView` | Main canvas: keyboard handling, mouse-drag selection, auto-scroll, scroll wheel, resize observer. Renders `Line`, `Cursor`, `Selection`, `Gutter`, `Scrollbar`, `RemoteCursor`, `RemoteSelection`. |
 | `CollaborationLayout` | Template wrapping `EditorView` with presence bar, connection indicator, and room-claim banner. |
 | `SoloLayout` | Minimal wrapper for offline editing. |
-| `AuthModal` | Register/login modal for room claiming. |
-| `UserPresenceBar` | Displays connected users with color avatars. |
+| `AuthModal` | Register/login modal for room claiming — uses shadcn `Dialog`, `Input`, `Label`, `Button`. |
+| `UserPresenceBar` | Displays connected users with color avatars — uses shadcn `Tooltip`. |
+
+### Design System (`components/`)
+
+Centralized UI primitives powered by **shadcn/ui** (style: `radix-nova`, Tailwind v4 + OKLCH colors).
+
+| Directory | Contents |
+|-----------|---------|
+| `components/ui/` | shadcn primitives: `Button`, `Input`, `Label`, `Dialog`, `Alert`, `Badge`, `Separator`, `Tooltip`, `Spinner` |
+| `components/theme/` | `ThemeProvider` (context + localStorage persistence), `ThemeToggle` (Lucide icon button), `useTheme` hook |
+
+**Component directory rule:** `src/components/ui/` holds shadcn primitives only; `src/ui/components/` holds editor-domain components that depend on `ViewModel`. Never cross-import between these directories.
+
+**Theme system:** `ThemeProvider` wraps the entire app in `App.tsx`. It applies a `dark` or `light` class to `<html>` based on the stored preference (localStorage key `app:theme`), defaulting to `system` (OS preference via `prefers-color-scheme`). The `ThemeToggle` button in `BottomBar` cycles `light → dark → system`. CSS variables for both modes are defined in `src/index.css`.
+
+**CLI:** To add shadcn components — `npx shadcn@latest add <component>` from `packages/client/`. The LLM skill is installed at `packages/client/.agents/skills/shadcn`.
 
 ### Collaboration (`collaboration/`)
 
