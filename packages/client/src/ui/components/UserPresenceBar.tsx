@@ -86,6 +86,9 @@ export function UserPresenceBar({ users, connectionStatus }: Props) {
         "overflow-x-auto scrollbar-hide",
         canScrollLeft && "presence-bar--shadow-left",
         canScrollRight && "presence-bar--shadow-right",
+        canScrollLeft && !canScrollRight && "shadow-[inset_8px_0_6px_-6px_rgba(0,0,0,0.2)] dark:shadow-[inset_8px_0_6px_-6px_rgba(255,255,255,0.15)]",
+        !canScrollLeft && canScrollRight && "shadow-[inset_-8px_0_6px_-6px_rgba(0,0,0,0.2)] dark:shadow-[inset_-8px_0_6px_-6px_rgba(255,255,255,0.15)]",
+        canScrollLeft && canScrollRight && "shadow-[inset_8px_0_6px_-6px_rgba(0,0,0,0.2),_inset_-8px_0_6px_-6px_rgba(0,0,0,0.2)] dark:shadow-[inset_8px_0_6px_-6px_rgba(255,255,255,0.15),_inset_-8px_0_6px_-6px_rgba(255,255,255,0.15)]",
       )}
       onWheel={handleWheel}
     >

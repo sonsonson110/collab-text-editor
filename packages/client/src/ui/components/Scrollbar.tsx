@@ -1,4 +1,4 @@
-import clsx from "clsx";
+import { cn } from "@/lib/utils";
 import { useCallback, useRef } from "react";
 
 interface Props {
@@ -142,21 +142,22 @@ export function Scrollbar({
   return (
     <div
       ref={trackRef}
-      className={clsx(
+      className={cn(
         "scrollbar-track",
+        "absolute bg-(--scrollbar-track-color) z-10 opacity-0 transition-opacity duration-(--scrollbar-fade-duration) ease pointer-events-none",
         isVertical
-          ? "scrollbar-track--vertical"
-          : "scrollbar-track--horizontal",
-        visible && "scrollbar-track--visible",
+          ? "scrollbar-track--vertical top-0 right-0 w-(--scrollbar-size) border-l border-border/20"
+          : "scrollbar-track--horizontal bottom-0 left-0 h-(--scrollbar-size) border-t border-border/20",
+        visible && "scrollbar-track--visible opacity-100 pointer-events-auto",
       )}
       style={trackStyle}
       onPointerDown={handleTrackPointerDown}
     >
       <div
-        className={clsx(
+        className={cn(
           "scrollbar-thumb",
+          "absolute bg-(--scrollbar-thumb-color) transition-colors duration-120 ease cursor-pointer hover:bg-(--scrollbar-thumb-hover-color) active:bg-(--scrollbar-thumb-active-color)",
           isVertical ? "inset-x-0" : "inset-y-0",
-          "absolute",
         )}
         style={thumbStyle}
         onPointerDown={handleThumbPointerDown}

@@ -18,8 +18,9 @@ export function Gutter({
   return (
     <div
       className={cn(
+        "gutter",
         "shrink-0 flex flex-col bg-(--background-color) text-muted-foreground",
-        "text-right pr-[1ch] select-none border-r border-border z-2"
+        "text-right pr-[1ch] select-none border-r border-border z-2",
       )}
       style={{ width }}
     >

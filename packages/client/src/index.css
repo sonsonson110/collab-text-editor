@@ -63,119 +63,10 @@ body {
   background-color: var(--background-color);
 }
 
-.editor {
-  display: flex;
-  position: relative;
-  font-family: monospace;
-  color: var(--text-color);
-  line-height: var(--line-height);
-  height: 100%;
-  overflow: hidden;
-}
-
-.editor:focus-visible {
-  outline: none;
-}
-
-.line {
-  height: var(--line-height);
-  white-space: pre;
-}
-
 @keyframes blink {
   50% {
     opacity: 0;
   }
-}
-
-.cursor {
-  pointer-events: none;
-  background-color: var(--text-color);
-  animation: blink 1s step-end infinite;
-}
-
-
-.editor-content {
-  flex-grow: 1;
-  position: relative; /* so scrollbar tracks position inside it */
-  overflow: hidden;
-  z-index: 1;
-}
-
-/* -------------------------------------------------------------------------
-   Scrollbar — reusable; works for any container that wraps a .scrollbar-track
-   -------------------------------------------------------------------------
-   Visibility is controlled by toggling `.scrollbar-track--visible` (added
-   by the parent component when the mouse is inside the editor container).
-*/
-.scrollbar-track {
-  position: absolute;
-  background: var(--scrollbar-track-color);
-  z-index: 10;
-  opacity: 0;
-  transition: opacity var(--scrollbar-fade-duration) ease;
-  /* Prevent scrollbar pointer events from bubbling to editor content */
-  pointer-events: none;
-}
-
-/* Axis-specific track placement — keeps JS style object minimal */
-.scrollbar-track--vertical {
-  top: 0;
-  right: 0;
-  width: var(--scrollbar-size);
-  border-left: 1px solid #44444444;
-}
-
-.scrollbar-track--horizontal {
-  bottom: 0;
-  left: 0;
-  height: var(--scrollbar-size);
-  border-top: 1px solid #44444444;
-}
-
-.scrollbar-track--visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.scrollbar-thumb {
-  /* No border-radius — thumb is a flat rectangle */
-  background: var(--scrollbar-thumb-color);
-  transition: background 120ms ease;
-  cursor: pointer;
-}
-
-.scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover-color);
-}
-
-.scrollbar-thumb:active {
-  background: var(--scrollbar-thumb-active-color);
-}
-
-/* -------------------------------------------------------------------------
-   Remote cursors & selections
-   -------------------------------------------------------------------------
-   Smooth position transitions when a remote cursor moves between cells.
-   Label opacity fades are driven by React state + this CSS transition.
-*/
-.remote-cursor-label {
-  transition: opacity 0.3s ease;
-}
-
-/* Invisible hit-area expander — makes hovering the thin 2px cursor bar
-   easier without widening the visible element or shifting its position. */
-.remote-cursor::before {
-  content: "";
-  position: absolute;
-  inset: 0 -4px;
-}
-
-.remote-selection {
-  transition:
-    left 0.1s ease-out,
-    top 0.1s ease-out,
-    width 0.1s ease-out;
 }
 
 /* Hides the native scrollbar while keeping scroll functionality. */
@@ -185,32 +76,6 @@ body {
 }
 .scrollbar-hide::-webkit-scrollbar {
   display: none; /* Chrome / Safari */
-}
-
-/* Presence bar — inset shadow affordances for horizontal overflow.
-   Shadows are toggled via modifier classes set by the component.
-   Uses rgba so they work across both light and dark themes. */
-.presence-bar--shadow-left {
-  box-shadow: inset 8px 0 6px -6px rgba(0, 0, 0, 0.2);
-}
-.dark .presence-bar--shadow-left {
-  box-shadow: inset 8px 0 6px -6px rgba(255, 255, 255, 0.15);
-}
-.presence-bar--shadow-right {
-  box-shadow: inset -8px 0 6px -6px rgba(0, 0, 0, 0.2);
-}
-.dark .presence-bar--shadow-right {
-  box-shadow: inset -8px 0 6px -6px rgba(255, 255, 255, 0.15);
-}
-.presence-bar--shadow-left.presence-bar--shadow-right {
-  box-shadow:
-    inset 8px 0 6px -6px rgba(0, 0, 0, 0.2),
-    inset -8px 0 6px -6px rgba(0, 0, 0, 0.2);
-}
-.dark .presence-bar--shadow-left.presence-bar--shadow-right {
-  box-shadow:
-    inset 8px 0 6px -6px rgba(255, 255, 255, 0.15),
-    inset -8px 0 6px -6px rgba(255, 255, 255, 0.15);
 }
 
 @theme inline {

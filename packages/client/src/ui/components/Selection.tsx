@@ -22,7 +22,7 @@ export function Selection({ rects }: Props) {
         const left = `calc(${rect.startCol} * 1ch)`;
         const width =
           rect.endCol === null
-            ? `calc(100% - ${rect.startCol}ch} + 1ch)`
+            ? `calc(100% - ${rect.startCol}ch + 1ch)`
             : `calc((${rect.endCol - rect.startCol}) * 1ch)`;
 
         return (

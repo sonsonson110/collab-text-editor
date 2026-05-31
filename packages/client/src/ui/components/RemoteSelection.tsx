@@ -1,7 +1,7 @@
 import { LINE_HEIGHT } from "@/constants";
 import type { SelectionRect } from "../utils";
 import { useEditorConfig } from "../EditorConfigContext";
-import clsx from "clsx";
+import { cn } from "@/lib/utils";
 
 interface Props {
   rects: SelectionRect[];
@@ -36,9 +36,9 @@ export function RemoteSelection({ rects, color }: Props) {
         return (
           <div
             key={i}
-            className={clsx(
+            className={cn(
               "remote-selection",
-              "absolute pointer-events-none",
+              "absolute pointer-events-none transition-[left,top,width] duration-100 ease-out",
             )}
             style={{
               top,

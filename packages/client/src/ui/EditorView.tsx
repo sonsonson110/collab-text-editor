@@ -1,4 +1,5 @@
 import type { IViewModel } from "@/view/viewModel";
+import { cn } from "@/lib/utils";
 import {
   useCallback,
   useEffect,
@@ -449,7 +450,10 @@ export function EditorView({ viewModel }: Props) {
   return (
     <div
       ref={containerRef}
-      className="editor"
+      className={cn(
+        "editor",
+        "flex relative font-mono text-(--text-color) leading-(--line-height) h-full overflow-hidden focus-visible:outline-none"
+      )}
       tabIndex={0}
       onKeyDown={handleKeyDown}
       onWheel={handleWheel}
@@ -466,7 +470,7 @@ export function EditorView({ viewModel }: Props) {
       />
 
       <div
-        className="editor-content"
+        className={cn("editor-content", "grow relative overflow-hidden z-1")}
         ref={contentRef}
         onMouseDown={handleMouseDown}
       >

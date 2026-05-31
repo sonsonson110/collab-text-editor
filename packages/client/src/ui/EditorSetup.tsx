@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { EditorConfigContext } from "./EditorConfigContext";
+import { cn } from "@/lib/utils";
 
 interface Props {
   children: ReactNode;
@@ -20,7 +21,12 @@ export function EditorSetup({ children, tabSize = 2 }: Props) {
 
   if (charWidth === null) {
     return (
-      <div className="editor">
+      <div
+        className={cn(
+          "editor",
+          "flex relative font-mono text-(--text-color) leading-(--line-height) h-full overflow-hidden focus-visible:outline-none"
+        )}
+      >
         {/* Render a single character invisibly to measure its accurate width */}
         <span
           ref={measureRef}

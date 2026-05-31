@@ -1,7 +1,7 @@
 import { LINE_HEIGHT } from "@/constants";
 import { useEditorConfig } from "../EditorConfigContext";
 import type { RemoteCursorView } from "@/collaboration/awareness";
-import clsx from "clsx";
+import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 
 /** Milliseconds of inactivity before the name label fades out. */
@@ -39,9 +39,10 @@ export function RemoteCursor({ remoteCursor }: Props) {
 
   return (
     <div
-      className={clsx(
+      className={cn(
         "remote-cursor",
         "absolute w-0.5 z-10 transition-[top,left] duration-100",
+        "before:content-[''] before:absolute before:inset-y-0 before:inset-x-[-4px]"
       )}
       style={{
         top: head.line * LINE_HEIGHT,
@@ -53,9 +54,10 @@ export function RemoteCursor({ remoteCursor }: Props) {
       onMouseLeave={() => setHovered(false)}
     >
       <div
-        className={clsx(
+        className={cn(
           "remote-cursor-label",
           "absolute left-0 text-white text-[10px] px-1 py-0.5 rounded-sm whitespace-nowrap select-none pointer-events-none",
+          "transition-opacity duration-300 ease"
         )}
         style={{
           top: -LINE_HEIGHT,
