@@ -119,6 +119,13 @@ jobs:
             IdentityFile ~/.ssh/id_ed25519
           EOF
 
+      # Connect to the VM and clear out unused Docker images and resources
+      # to prevent disk space exhaustion on the VPS during rolling updates.
+      - name: Clean up unused Docker resources
+        run: |
+          ssh ${{ secrets.VM_USER }}@${{ secrets.VM_SSH_HOST }} \
+            "docker system prune -af"
+
       # Connect to the VM and instruct Docker Swarm to perform a rolling update.
       # --with-registry-auth forwards the runner's GHCR credentials to the
       # Swarm manager so it can pull the newly pushed private images.
