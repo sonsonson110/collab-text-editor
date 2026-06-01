@@ -6,6 +6,7 @@ import { Cursor } from "@/editor/cursor/cursor";
 import { EditorState } from "@/editor/editorState";
 import { HistoryManager } from "@/editor/history";
 import { ViewModel } from "@/view/viewModel";
+import { useEditorStore } from "@/store/editorStore";
 
 /**
  * Bootstraps a solo (offline) editing session.
@@ -25,7 +26,33 @@ export function useSoloEditor() {
     const editorState = new EditorState(doc, cursor, history);
     const vm = new ViewModel(editorState);
 
+    const storeUnsubscribe = editorState.subscribe(() => {
+      const activeCursor = editorState.getCursor().active;
+      const selectionCount = editorState.getSelectedText().length;
+      useEditorStore.getState().setCursorState(
+        {
+          line: activeCursor.line,
+          column: activeCursor.column,
+        },
+        selectionCount
+      );
+    });
+
+    const initialCursor = editorState.getCursor().active;
+    const initialSelectionCount = editorState.getSelectedText().length;
+    useEditorStore.getState().setCursorState(
+      {
+        line: initialCursor.line,
+        column: initialCursor.column,
+      },
+      initialSelectionCount
+    );
+
     setViewModel(vm);
+
+    return () => {
+      storeUnsubscribe();
+    };
   }, []);
 
   return { viewModel };

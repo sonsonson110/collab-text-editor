@@ -15,6 +15,7 @@ import {
 import { YjsUndoManager } from "@/collaboration/yjsUndoManager";
 import type { ConnectionStatus } from "@/ui/components";
 import { TOP_PADDING_RESERVATION_KEYS } from "@/view/types";
+import { useEditorStore } from "@/store/editorStore";
 
 /** Palette used to assign each remote collaborator a distinct cursor color. */
 const REMOTE_CURSOR_COLORS = [
@@ -326,6 +327,28 @@ export function useCollaborativeEditor({
     vmRef.current = vm;
     setViewModel(vm);
 
+    const storeUnsubscribe = editorState.subscribe(() => {
+      const activeCursor = editorState.getCursor().active;
+      const selectionCount = editorState.getSelectedText().length;
+      useEditorStore.getState().setCursorState(
+        {
+          line: activeCursor.line,
+          column: activeCursor.column,
+        },
+        selectionCount
+      );
+    });
+
+    const initialCursor = editorState.getCursor().active;
+    const initialSelectionCount = editorState.getSelectedText().length;
+    useEditorStore.getState().setCursorState(
+      {
+        line: initialCursor.line,
+        column: initialCursor.column,
+      },
+      initialSelectionCount
+    );
+
     wireAwareness(provider, ydoc, ytext, doc, token);
 
     // Track connection status for the UI indicator.
@@ -334,6 +357,7 @@ export function useCollaborativeEditor({
     });
 
     return () => {
+      storeUnsubscribe();
       provider.destroy();
       providerRef.current = null;
     };
