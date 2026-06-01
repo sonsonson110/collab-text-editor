@@ -40,7 +40,7 @@ export function ThemeToggle() {
       id="theme-toggle-btn"
       variant="ghost"
       size="icon"
-      className="h-5 w-5 rounded-none text-neutral-400 hover:text-neutral-200 hover:bg-transparent"
+      className="h-full w-8 rounded-none text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10 hover:text-foreground transition-none"
       onClick={handleClick}
       aria-label={THEME_LABEL[theme]}
       title={THEME_LABEL[theme]}
