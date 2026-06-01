@@ -330,24 +330,20 @@ export function useCollaborativeEditor({
     const storeUnsubscribe = editorState.subscribe(() => {
       const activeCursor = editorState.getCursor().active;
       const selectionCount = editorState.getSelectedText().length;
-      useEditorStore.getState().setCursorState(
-        {
-          line: activeCursor.line,
-          column: activeCursor.column,
-        },
-        selectionCount
-      );
+      useEditorStore.getState().setCursorPosition({
+        line: activeCursor.line,
+        column: activeCursor.column,
+      });
+      useEditorStore.getState().setSelectionCount(selectionCount);
     });
 
     const initialCursor = editorState.getCursor().active;
     const initialSelectionCount = editorState.getSelectedText().length;
-    useEditorStore.getState().setCursorState(
-      {
-        line: initialCursor.line,
-        column: initialCursor.column,
-      },
-      initialSelectionCount
-    );
+    useEditorStore.getState().setCursorPosition({
+      line: initialCursor.line,
+      column: initialCursor.column,
+    });
+    useEditorStore.getState().setSelectionCount(initialSelectionCount);
 
     wireAwareness(provider, ydoc, ytext, doc, token);
 
