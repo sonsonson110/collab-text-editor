@@ -145,7 +145,7 @@ Yjs-specific adapters — isolated so solo mode has no Yjs dependency at runtime
 
 | Hook | Responsibility |
 |------|---------------|
-| `useCollaborativeEditor` | Bootstraps the full collab session: creates `Y.Doc`, `WebsocketProvider`, `CollaborativeDocument`, `EditorState`, `ViewModel`. Wires awareness (name, color, cursor broadcasting, deduplication by `userId` + `lastActive`). Exposes `reconnect(newToken)` for guest→member upgrade. |
+| `useCollaborativeEditor` | Bootstraps the full collab session: creates `Y.Doc`, `WebsocketProvider`, `CollaborativeDocument`, `EditorState`, `ViewModel`. Wires awareness (name, color, cursor broadcasting, deduplication by `userId` + `lastActive`). Listens for `MSG_SNAPSHOT_SAVED` to track last saved time. Exposes `reconnect(newToken)` for guest→member upgrade and `lastSaved` for UI. |
 | `useSoloEditor` | Creates `Document` → `EditorState` → `ViewModel` with no network. |
 
 ---
@@ -159,7 +159,7 @@ Single-file entry point (`src/index.ts`) implementing the Yjs sync and awareness
 1. **JWT authentication** — `verifyClient` rejects upgrades without a valid JWT (close code `4401`).
 2. **Room lifecycle** — rooms are created lazily on first connection and destroyed when the last client disconnects.
 3. **Snapshot hydration** — on room creation, fetches the latest binary snapshot from the api-server and applies it via `Y.applyUpdate`.
-4. **Snapshot persistence** — `snapshotScheduler` debounces saves (5 s after last change, ceiling at 60 s). Final save on room teardown.
+4. **Snapshot persistence** — `snapshotScheduler` debounces saves (5 s after last change, ceiling at 60 s). On successful save, it broadcasts a save timestamp (`MSG_SNAPSHOT_SAVED`) to all connected clients. Final save on room teardown.
 5. **Awareness cleanup** — tracks each socket's awareness `clientID`s and removes them on disconnect so peers immediately drop stale cursors.
 
 ### Internal Modules
