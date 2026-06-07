@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
+import * as decoding from "lib0/decoding";
 import { LINE_HEIGHT } from "@/constants";
 import { CollaborativeDocument } from "@/core/document/collaborativeDocument";
 import { Position } from "@/core/position/position";
@@ -316,6 +317,10 @@ export function useCollaborativeEditor({
     });
     providerRef.current = provider;
 
+    // Register a custom message handler for MSG_SNAPSHOT_SAVED (type 4).
+    // The sync-server broadcasts this after each successful snapshot persistence.
+    registerSnapshotSavedHandler(provider);
+
     const doc = new CollaborativeDocument(ytext);
 
     const cursor = new Cursor(new Position(0, 0));
@@ -354,6 +359,7 @@ export function useCollaborativeEditor({
 
     return () => {
       storeUnsubscribe();
+      useEditorStore.getState().setLastSavedAt(null);
       provider.destroy();
       providerRef.current = null;
     };
@@ -381,6 +387,8 @@ export function useCollaborativeEditor({
         params: { token: newToken },
       });
       providerRef.current = newProvider;
+
+      registerSnapshotSavedHandler(newProvider);
 
       const doc = new CollaborativeDocument(ytext);
       wireAwareness(newProvider, ydoc, ytext, doc, newToken);
@@ -415,4 +423,31 @@ function extractUserId(token: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Custom message type matching the sync-server's `MSG_SNAPSHOT_SAVED`.
+ *
+ * Index 4 avoids collisions with y-websocket's built-in message types:
+ * 0 = Sync, 1 = Awareness, 2 = Auth, 3 = QueryAwareness.
+ */
+const MSG_SNAPSHOT_SAVED = 4;
+
+/**
+ * Registers a custom message handler on the WebsocketProvider for
+ * `MSG_SNAPSHOT_SAVED` messages broadcast by the sync-server.
+ *
+ * The handler reads the Float64 timestamp from the binary message and updates
+ * the Zustand editor store so the BottomBar can display the last save time.
+ */
+function registerSnapshotSavedHandler(provider: WebsocketProvider): void {
+  // The y-websocket v3 provider exposes a per-instance `messageHandlers` array
+  // (copied from the module-level defaults in the constructor). We install our
+  // handler at index 4 — the provider's readMessage() dispatches by index.
+  (provider as unknown as { messageHandlers: unknown[] }).messageHandlers[
+    MSG_SNAPSHOT_SAVED
+  ] = (_encoder: unknown, decoder: decoding.Decoder): void => {
+    const timestamp = decoding.readFloat64(decoder);
+    useEditorStore.getState().setLastSavedAt(timestamp);
+  };
 }

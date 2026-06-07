@@ -39,6 +39,15 @@ const MSG_SYNC = 0;
 const MSG_AWARENESS = 1;
 
 /**
+ * Custom message type broadcast to all clients after a snapshot is persisted.
+ * Payload: a single Float64 representing the save timestamp (epoch ms).
+ *
+ * Index 4 is chosen to avoid collision with y-websocket's built-in types:
+ * 0 = Sync, 1 = Awareness, 2 = Auth, 3 = QueryAwareness.
+ */
+const MSG_SNAPSHOT_SAVED = 4;
+
+/**
  * Close code sent to clients whose JWT is missing or invalid.
  * 4401 is in the application-reserved range (4000–4999).
  */
@@ -157,7 +166,20 @@ async function getOrCreateRoom(name: string): Promise<Room> {
   );
 
   // Start debounced snapshot persistence for this room.
-  startTracking(name, doc);
+  // The onSaved callback broadcasts the save timestamp to all connected
+  // clients via a custom MSG_SNAPSHOT_SAVED message.
+  startTracking(name, doc, (_roomId, timestamp) => {
+    const msg = encoding.createEncoder();
+    encoding.writeVarUint(msg, MSG_SNAPSHOT_SAVED);
+    encoding.writeFloat64(msg, timestamp);
+    const encoded = encoding.toUint8Array(msg);
+
+    room.connections.forEach((conn) => {
+      if (conn.readyState === WebSocket.OPEN) {
+        conn.send(encoded);
+      }
+    });
+  });
 
   rooms.set(name, room);
   return room;

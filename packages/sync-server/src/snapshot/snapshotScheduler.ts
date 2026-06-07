@@ -1,6 +1,4 @@
 import * as Y from "yjs";
-import * as encoding from "lib0/encoding";
-import * as syncProtocol from "y-protocols/sync";
 import { saveSnapshot } from "../api/snapshotClient.js";
 
 /** Debounce delay: snapshot fires this many ms after the last document change. */
@@ -8,6 +6,14 @@ const DEBOUNCE_DELAY_MS = 5_000;
 
 /** Maximum time between saves even during continuous editing activity. */
 const MAX_WAIT_MS = 60_000;
+
+/**
+ * Callback invoked after a snapshot has been successfully persisted.
+ *
+ * @param roomId    The room UUID that was saved.
+ * @param timestamp Unix epoch milliseconds of the save.
+ */
+export type OnSnapshotSaved = (roomId: string, timestamp: number) => void;
 
 /**
  * Per-room state for the debounced + max-wait snapshot scheduler.
@@ -21,6 +27,8 @@ interface RoomSchedulerState {
   maxWaitTimer: ReturnType<typeof setTimeout> | null;
   /** The update listener attached to the Y.Doc. Stored so we can remove it on stop. */
   updateListener: (update: Uint8Array) => void;
+  /** Optional callback fired after each successful save. */
+  onSaved: OnSnapshotSaved | null;
 }
 
 const schedulers = new Map<string, RoomSchedulerState>();
@@ -36,10 +44,15 @@ const schedulers = new Map<string, RoomSchedulerState>();
  *   <li><b>Teardown:</b> {@link stopTracking} performs a final save when called.</li>
  * </ul>
  *
- * @param roomId Room UUID string (used as the snapshot API key).
- * @param doc    The Yjs document to track.
+ * @param roomId  Room UUID string (used as the snapshot API key).
+ * @param doc     The Yjs document to track.
+ * @param onSaved Optional callback invoked after each successful snapshot save.
  */
-export function startTracking(roomId: string, doc: Y.Doc): void {
+export function startTracking(
+  roomId: string,
+  doc: Y.Doc,
+  onSaved?: OnSnapshotSaved,
+): void {
   if (schedulers.has(roomId)) {
     return; // Already tracking
   }
@@ -49,15 +62,15 @@ export function startTracking(roomId: string, doc: Y.Doc): void {
     lastSavedAt: Date.now(),
     maxWaitTimer: null,
     updateListener: () => {}, // placeholder, replaced below
+    onSaved: onSaved ?? null,
   };
 
   async function persist(): Promise<void> {
-    // Encode the full state as a single binary update
-    const encoder = encoding.createEncoder();
-    syncProtocol.writeUpdate(encoder, Y.encodeStateAsUpdate(doc));
     const data = Y.encodeStateAsUpdate(doc);
     await saveSnapshot(roomId, data);
-    state.lastSavedAt = Date.now();
+    const now = Date.now();
+    state.lastSavedAt = now;
+    state.onSaved?.(roomId, now);
   }
 
   const onUpdate = (): void => {
@@ -123,4 +136,5 @@ export async function stopTracking(roomId: string, doc: Y.Doc): Promise<void> {
   // Final save on teardown
   const data = Y.encodeStateAsUpdate(doc);
   await saveSnapshot(roomId, data);
+  // No need to invoke onSaved here — all clients have already disconnected.
 }

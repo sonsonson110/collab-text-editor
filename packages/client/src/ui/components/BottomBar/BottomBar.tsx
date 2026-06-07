@@ -4,6 +4,7 @@ import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { Lock, Library } from "lucide-react";
 import { BottomBarItem } from "./BottomBarItem";
 import { CursorPositionIndicator } from "./CursorPositionIndicator";
+import { LastSavedIndicator } from "./LastSavedIndicator";
 
 /**
  * A dedicated, VSCode-like status bar at the bottom of the editor.
@@ -32,9 +33,7 @@ export function BottomBar() {
 
       <div className="flex items-center h-full overflow-hidden">
         {/* Right side items */}
-        <BottomBarItem as="div" className="cursor-default">
-          Last saved: Just now
-        </BottomBarItem>
+        <LastSavedIndicator />
 
         <CursorPositionIndicator />
 
