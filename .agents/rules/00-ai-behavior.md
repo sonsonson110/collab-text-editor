@@ -15,4 +15,4 @@ trigger: always_on
 
 ## 3. Post-Generation Verification
 
-- **Lint Enforcement:** Never leave a lint error or warning in committed code. After generating frontend code, prompt the user to run `npm run lint --workspace=packages/client`. Fix root causes; do not use `// eslint-disable` unless strictly unavoidable and documented.
+- **Lint Enforcement:** Never leave a lint error or warning in committed code. After generating frontend code, prompt the user to run `npm run lint --workspace=@myapp/client`. Fix root causes; do not use `// eslint-disable` unless strictly unavoidable and documented.
