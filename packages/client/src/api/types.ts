@@ -5,6 +5,7 @@ export interface RoomResponse {
   ownerId: string | null;
   isClaimed: boolean;
   accessMode: "PUBLIC_EDIT" | "PUBLIC_VIEW" | "PRIVATE";
+  title: string | null;
   createdAt: string;
 }
 

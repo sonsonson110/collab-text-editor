@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { Lock, Library } from "lucide-react";
@@ -23,7 +24,7 @@ export function BottomBar() {
     >
       <div className="flex items-center h-full overflow-hidden">
         {/* Left side items */}
-        <BottomBarItem>
+        <BottomBarItem as={Link} to="/rooms">
           <Library className="w-3.5 h-3.5" />
           <span>My Rooms</span>
         </BottomBarItem>
@@ -34,7 +35,7 @@ export function BottomBar() {
         <BottomBarItem as="div" className="cursor-default">
           Last saved: Just now
         </BottomBarItem>
-        
+
         <CursorPositionIndicator />
 
         <BottomBarItem>

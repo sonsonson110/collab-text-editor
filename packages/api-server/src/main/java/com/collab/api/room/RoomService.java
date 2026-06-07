@@ -239,6 +239,7 @@ public class RoomService {
                 room.getOwnerId(),
                 room.getOwnerId() != null,
                 room.getAccessMode().name(),
+                room.getTitle(),
                 room.getCreatedAt()
         );
     }

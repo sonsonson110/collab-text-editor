@@ -81,6 +81,12 @@ public class Room {
     private AccessMode accessMode = AccessMode.PUBLIC_EDIT;
 
     /**
+     * Optional human-readable name for the room.
+     */
+    @Column(length = 50, nullable = true)
+    private String title;
+
+    /**
      * When this unclaimed room should be automatically deleted.
      * {@code null} for claimed (permanent) rooms.
      */
@@ -91,3 +97,4 @@ public class Room {
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 }
+

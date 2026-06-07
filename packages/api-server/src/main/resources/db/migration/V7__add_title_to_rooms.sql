@@ -1,0 +1,2 @@
+ALTER TABLE rooms
+ADD COLUMN title VARCHAR(50);

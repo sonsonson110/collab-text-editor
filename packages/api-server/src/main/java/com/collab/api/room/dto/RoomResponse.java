@@ -14,6 +14,7 @@ import java.util.UUID;
  * @param ownerId    UUID of the room owner, or {@code null} for unclaimed rooms.
  * @param isClaimed  {@code true} if the room has an owner (is permanent).
  * @param accessMode The room's current access control setting.
+ * @param title      The human-readable title of the room, if set.
  * @param createdAt  When the room was created.
  */
 public record RoomResponse(
@@ -22,5 +23,7 @@ public record RoomResponse(
         UUID ownerId,
         boolean isClaimed,
         String accessMode,
+        String title,
         Instant createdAt
 ) {}
+

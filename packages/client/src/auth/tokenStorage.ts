@@ -87,3 +87,14 @@ export function getDisplayNameFromToken(token: string): string | null {
     ? payload["displayName"]
     : null;
 }
+
+/**
+ * Extracts the `sub` claim (user ID) from a JWT payload without network calls.
+ *
+ * @param token A compact JWT string.
+ * @returns The user ID, or `null` if the token is malformed.
+ */
+export function getUserIdFromToken(token: string): string | null {
+  const payload = decodePayload(token);
+  return typeof payload?.["sub"] === "string" ? payload["sub"] : null;
+}
