@@ -88,6 +88,8 @@ export class ViewModel implements IViewModel {
   /** Cursor positions of all connected remote peers, in absolute document coordinates. */
   private remoteCursors: RemoteCursorAbsolute[] = [];
 
+  private listeners = new Set<() => void>();
+
   constructor(
     editor: IEditorState,
   ) {
@@ -163,6 +165,10 @@ export class ViewModel implements IViewModel {
     if (delta !== 0 && this.scrollTop > 0) {
       this.scrollTop += delta;
       this.clampScrollPosition();
+    }
+    
+    if (delta !== 0) {
+      this.notifyListeners();
     }
   }
 
@@ -258,9 +264,19 @@ export class ViewModel implements IViewModel {
     };
   }
 
-  /** Replace the stored set of remote cursors (called from the awareness listener). */
+  /** 
+   * Replace the stored set of remote cursors (called from the awareness listener). 
+   * 
+   * We explicitly notify listeners here because remote cursor positions are
+   * re-resolved asynchronously (e.g. inside `useCollaborativeEditor`'s `ytextObserver`)
+   * after a remote text sync update has already triggered a React re-render queue.
+   * By notifying the listeners, we ensure `EditorView` pulls the newly resolved
+   * remote cursor positions into React state so the UI renders them perfectly flush
+   * with the newly inserted keystrokes (instead of visually lagging behind).
+   */
   setRemoteCursors(cursors: RemoteCursorAbsolute[]): void {
     this.remoteCursors = cursors;
+    this.notifyListeners();
   }
 
   /**
@@ -315,8 +331,28 @@ export class ViewModel implements IViewModel {
     this.clampScrollPosition();
   }
 
+  /**
+   * Subscribes to changes in both the underlying EditorState and the ViewModel itself.
+   *
+   * The ViewModel maintains its own listeners so it can trigger UI re-renders for
+   * view-specific state changes (like scroll padding adjustments and remote cursor 
+   * resolutions) that the underlying core EditorState has no knowledge of.
+   */
   subscribe(callback: () => void): () => void {
-    return this.editor.subscribe(callback);
+    const unsubEditor = this.editor.subscribe(callback);
+    this.listeners.add(callback);
+    return () => {
+      unsubEditor();
+      this.listeners.delete(callback);
+    };
+  }
+
+  /**
+   * Notifies `EditorView` (or other subscribers) that view-specific state has changed
+   * and requires a re-render to reflect updates (e.g. a remote cursor changing position).
+   */
+  private notifyListeners(): void {
+    this.listeners.forEach((listener) => listener());
   }
 
   execute(command: Command): void {
