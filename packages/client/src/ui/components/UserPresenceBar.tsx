@@ -20,6 +20,7 @@ const STATUS_DOT_COLOR: Record<ConnectionStatus, string> = {
 interface Props {
   users: ConnectedUser[];
   connectionStatus: ConnectionStatus;
+  children?: React.ReactNode;
 }
 
 /**
@@ -33,7 +34,7 @@ interface Props {
  * Each username is wrapped in a {@link Tooltip} that shows their display name
  * and role on hover.
  */
-export function UserPresenceBar({ users, connectionStatus }: Props) {
+export function UserPresenceBar({ users, connectionStatus, children }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -103,19 +104,28 @@ export function UserPresenceBar({ users, connectionStatus }: Props) {
             <TooltipTrigger asChild>
               <span
                 className="font-medium whitespace-nowrap cursor-default"
-                style={{ color: user.color }}
+                style={{ color: user.isViewer ? undefined : user.color }}
               >
-                {user.name}
+                <span style={{ color: user.isViewer ? undefined : user.color, opacity: user.isViewer ? 0.6 : 1 }}>
+                  {user.name}
+                </span>
                 {user.isLocal ? " (you)" : ""}
+                {user.isViewer && !user.isLocal ? (
+                  <span className="ml-1 text-muted-foreground/60 text-[10px] font-normal">👁</span>
+                ) : null}
               </span>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="font-mono text-xs">
               {user.name}
               {user.isLocal ? " — you" : ""}
+              {user.isViewer ? " — View-only" : ""}
             </TooltipContent>
           </Tooltip>
         </span>
       ))}
+      <div className="ml-auto shrink-0 flex items-center">
+        {children}
+      </div>
     </div>
   );
 }

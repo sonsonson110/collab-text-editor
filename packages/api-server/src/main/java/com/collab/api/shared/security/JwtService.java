@@ -139,4 +139,26 @@ public class JwtService {
     public String extractRole(Claims claims) {
         return claims.get(CLAIM_ROLE, String.class);
     }
+
+    /**
+     * Generates a short-lived signed JWT ticket for connecting to a specific room.
+     *
+     * @param subject       The user UUID or guest identifier.
+     * @param roomId        The UUID string of the room.
+     * @param effectiveRole The effective role (OWNER, EDITOR, VIEWER) the user has in the room.
+     * @return A compact signed JWT string.
+     */
+    public String generateRoomTicket(String subject, String roomId, String effectiveRole) {
+        long now = System.currentTimeMillis();
+        long ticketExpirationMs = 5 * 60 * 1000; // 5 minutes
+        return Jwts.builder()
+                .subject(subject)
+                .claim("roomId", roomId)
+                .claim("effectiveRole", effectiveRole)
+                .claim("type", "room_ticket")
+                .issuedAt(new Date(now))
+                .expiration(new Date(now + ticketExpirationMs))
+                .signWith(signingKey)
+                .compact();
+    }
 }

@@ -1,17 +1,17 @@
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
-import { Lock, Library } from "lucide-react";
+import { Library } from "lucide-react";
 import { BottomBarItem } from "./BottomBarItem";
 import { CursorPositionIndicator } from "./CursorPositionIndicator";
 import { LastSavedIndicator } from "./LastSavedIndicator";
+import { RoomAccessIndicator } from "./RoomAccessIndicator";
 
 /**
  * A dedicated, VSCode-like status bar at the bottom of the editor.
  *
- * Currently serves as a placeholder layout for future indicators
- * (e.g., cursor position, connection status, file type).
- * Hosts the {@link ThemeToggle} button on the right side.
+ * Serves as a status bar displaying room access controls, last save time,
+ * cursor coordinates, and theme toggling.
  */
 export function BottomBar() {
   return (
@@ -37,13 +37,12 @@ export function BottomBar() {
 
         <CursorPositionIndicator />
 
-        <BottomBarItem>
-          <Lock className="w-3.5 h-3.5" />
-          <span>Restricted</span>
-        </BottomBarItem>
+        <RoomAccessIndicator />
 
         <ThemeToggle />
       </div>
     </div>
   );
 }
+
+

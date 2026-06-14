@@ -59,3 +59,25 @@ export async function apiPost<T>(url: string, body?: JsonBody): Promise<ApiRespo
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 }
+
+/**
+ * Issues a PATCH request with a JSON body and the stored JWT attached.
+ *
+ * @param url  The API URL path.
+ * @param body Optional JSON body.
+ */
+export async function apiPatch<T>(url: string, body?: JsonBody): Promise<ApiResponse<T>> {
+  return request<T>(url, {
+    method: "PATCH",
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+}
+
+/**
+ * Issues a DELETE request with the stored JWT attached.
+ *
+ * @param url The API URL path.
+ */
+export async function apiDelete<T>(url: string): Promise<ApiResponse<T>> {
+  return request<T>(url, { method: "DELETE" });
+}

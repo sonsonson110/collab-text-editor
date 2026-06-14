@@ -8,6 +8,7 @@ import com.collab.api.room.entity.RoomMember;
 import com.collab.api.room.entity.RoomRole;
 import com.collab.api.shared.exception.ApiException;
 import com.collab.api.shared.security.JwtService;
+import com.collab.api.user.User;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,15 +38,21 @@ public class RoomService {
     private final RoomRepository roomRepository;
     private final RoomMemberRepository roomMemberRepository;
     private final SlugGenerator slugGenerator;
+    private final JwtService jwtService;
+    private final com.collab.api.user.UserService userService;
 
     public RoomService(
             RoomRepository roomRepository,
             RoomMemberRepository roomMemberRepository,
-            SlugGenerator slugGenerator
+            SlugGenerator slugGenerator,
+            JwtService jwtService,
+            com.collab.api.user.UserService userService
     ) {
         this.roomRepository = roomRepository;
         this.roomMemberRepository = roomMemberRepository;
         this.slugGenerator = slugGenerator;
+        this.jwtService = jwtService;
+        this.userService = userService;
     }
 
     /**
@@ -186,17 +193,7 @@ public class RoomService {
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Room not found"));
 
-        if (room.getAccessMode() == AccessMode.PRIVATE) {
-            // For private rooms, only UUID-based member identities can be checked.
-            // Guests (non-UUID sub claims) are always rejected.
-            boolean isMember = tryParseUuid(requesterId)
-                    .map(uid -> roomMemberRepository.existsByRoomIdAndUserId(roomId, uid))
-                    .orElse(false);
-            if (!isMember) {
-                throw new ApiException(HttpStatus.FORBIDDEN, "You are not a member of this room");
-            }
-        }
-
+        calculateEffectiveRole(room, requesterId); // throws if unauthorized
         return toResponse(room);
     }
 
@@ -215,21 +212,147 @@ public class RoomService {
         Room room = roomRepository.findBySlug(slug)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Room not found"));
 
-        if (room.getAccessMode() == AccessMode.PRIVATE) {
-            boolean isMember = tryParseUuid(requesterId)
-                    .map(uid -> roomMemberRepository.existsByRoomIdAndUserId(room.getId(), uid))
-                    .orElse(false);
-            if (!isMember) {
-                throw new ApiException(HttpStatus.FORBIDDEN, "You are not a member of this room");
+        calculateEffectiveRole(room, requesterId); // throws if unauthorized
+        return toResponse(room);
+    }
+
+    /**
+     * Generates a WebSocket Room Ticket JWT for the given room slug and requester.
+     */
+    public String getRoomTicket(String slug, String requesterId) {
+        Room room = roomRepository.findBySlug(slug)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Room not found"));
+
+        String effectiveRole = calculateEffectiveRole(room, requesterId);
+        return jwtService.generateRoomTicket(requesterId, room.getId().toString(), effectiveRole);
+    }
+
+    // -------------------------------------------------------------------------
+    // Permission Management
+    // -------------------------------------------------------------------------
+
+    @Transactional
+    public void updateAccessMode(UUID roomId, UUID callerId, AccessMode newMode) {
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Room not found"));
+        
+        verifyOwner(room, callerId);
+        room.setAccessMode(newMode);
+        roomRepository.save(room);
+    }
+
+    public List<RoomMember> getRoomMembers(UUID roomId, UUID callerId) {
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Room not found"));
+        
+        verifyOwner(room, callerId);
+        return roomMemberRepository.findAllByRoomId(roomId);
+    }
+
+    @Transactional
+    public RoomMember addMember(UUID roomId, UUID callerId, String targetUserEmail, RoomRole role) {
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Room not found"));
+        
+        verifyOwner(room, callerId);
+
+        User targetUser = userService.findByEmail(targetUserEmail)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "User with email not found"));
+
+        if (roomMemberRepository.existsByRoomIdAndUserId(roomId, targetUser.getId())) {
+            throw new ApiException(HttpStatus.CONFLICT, "User is already a member");
+        }
+
+        RoomMember newMember = RoomMember.builder()
+                .roomId(roomId)
+                .userId(targetUser.getId())
+                .role(role)
+                .build();
+        return roomMemberRepository.save(newMember);
+    }
+
+    @Transactional
+    public RoomMember updateMemberRole(UUID roomId, UUID callerId, UUID targetUserId, RoomRole newRole) {
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Room not found"));
+        
+        verifyOwner(room, callerId);
+
+        RoomMember member = roomMemberRepository.findByRoomIdAndUserId(roomId, targetUserId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Member not found"));
+
+        if (member.getRole() == RoomRole.OWNER && newRole != RoomRole.OWNER) {
+            long ownerCount = roomMemberRepository.findAllByRoomId(roomId).stream()
+                    .filter(m -> m.getRole() == RoomRole.OWNER).count();
+            if (ownerCount <= 1 && (room.getOwnerId() == null || room.getOwnerId().equals(targetUserId))) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Cannot demote the only owner of the room");
             }
         }
 
-        return toResponse(room);
+        member.setRole(newRole);
+        return roomMemberRepository.save(member);
+    }
+
+    @Transactional
+    public void removeMember(UUID roomId, UUID callerId, UUID targetUserId) {
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Room not found"));
+        
+        verifyOwner(room, callerId);
+
+        RoomMember member = roomMemberRepository.findByRoomIdAndUserId(roomId, targetUserId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Member not found"));
+
+        if (member.getRole() == RoomRole.OWNER) {
+            long ownerCount = roomMemberRepository.findAllByRoomId(roomId).stream()
+                    .filter(m -> m.getRole() == RoomRole.OWNER).count();
+            if (ownerCount <= 1 && (room.getOwnerId() == null || room.getOwnerId().equals(targetUserId))) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Cannot remove the only owner of the room");
+            }
+        }
+
+        roomMemberRepository.delete(member);
+    }
+
+    private void verifyOwner(Room room, UUID callerId) {
+        if (callerId.equals(room.getOwnerId())) {
+            return;
+        }
+        boolean isOwner = roomMemberRepository.findByRoomIdAndUserId(room.getId(), callerId)
+                .map(m -> m.getRole() == RoomRole.OWNER)
+                .orElse(false);
+        if (!isOwner) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Only room owners can manage permissions");
+        }
     }
 
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
+
+    private String calculateEffectiveRole(Room room, String requesterId) {
+        java.util.Optional<UUID> uidOpt = tryParseUuid(requesterId);
+        
+        if (uidOpt.isPresent()) {
+            UUID uid = uidOpt.get();
+            if (uid.equals(room.getOwnerId())) {
+                return "OWNER";
+            }
+            java.util.Optional<RoomMember> memberOpt = roomMemberRepository.findByRoomIdAndUserId(room.getId(), uid);
+            if (memberOpt.isPresent()) {
+                return memberOpt.get().getRole().name();
+            }
+        }
+
+        if (room.getAccessMode() == AccessMode.PUBLIC_EDIT) {
+            return "EDITOR";
+        } else if (room.getAccessMode() == AccessMode.PUBLIC_VIEW) {
+            return "VIEWER";
+        } else {
+            // AccessMode.PRIVATE and no match above -> Reject
+            throw new ApiException(HttpStatus.FORBIDDEN, "You do not have access to this room");
+        }
+    }
 
     /** Maps a {@link Room} entity to its API projection. */
     private RoomResponse toResponse(Room room) {

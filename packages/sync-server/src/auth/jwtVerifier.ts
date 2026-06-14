@@ -48,3 +48,29 @@ export function verifyToken(token: string): VerifiedClaims {
 
   return { userId: payload.sub, role: payload.role };
 }
+
+export interface TicketClaims {
+  userId: string;
+  effectiveRole: string;
+}
+
+export function verifyRoomTicket(token: string, expectedRoomId: string): TicketClaims {
+  const payload = jwt.verify(token, SECRET_KEY, {
+    algorithms: ["HS256", "HS384", "HS512"],
+  }) as {
+    sub: string;
+    roomId: string;
+    effectiveRole: string;
+    type: string;
+  };
+
+  if (payload.type !== "room_ticket") {
+    throw new Error("Invalid token type");
+  }
+
+  if (payload.roomId !== expectedRoomId) {
+    throw new Error("Ticket does not match the requested room");
+  }
+
+  return { userId: payload.sub, effectiveRole: payload.effectiveRole };
+}

@@ -18,6 +18,8 @@ export interface CursorState {
 export interface AwarenessUserState {
   user?: UserInfo;
   cursor?: CursorState | null;
+  /** Optional effective role published by the client (e.g. "VIEWER"). */
+  role?: string;
 }
 
 /** A remote cursor expressed as absolute character offsets. */
@@ -50,6 +52,8 @@ export interface ConnectedUser {
   name: string;
   color: string;
   isLocal: boolean;
+  /** True when this peer is a view-only observer (no editing rights). */
+  isViewer: boolean;
 }
 
 /**

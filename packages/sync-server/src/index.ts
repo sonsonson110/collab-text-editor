@@ -31,7 +31,7 @@ import * as awarenessProtocol from "y-protocols/awareness";
 import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import type { IncomingMessage } from "node:http";
-import { verifyToken, type VerifiedClaims } from "./auth/jwtVerifier.js";
+import { verifyRoomTicket, type TicketClaims } from "./auth/jwtVerifier.js";
 import { fetchSnapshot } from "./api/snapshotClient.js";
 import { startTracking, stopTracking } from "./snapshot/snapshotScheduler.js";
 
@@ -62,7 +62,7 @@ const WS_CLOSE_UNAUTHORIZED = 4401;
  * Using a WeakMap avoids any changes to the WebSocket type while allowing
  * automatic garbage collection when a socket is closed.
  */
-const connectionClaims = new WeakMap<WebSocket, VerifiedClaims>();
+const connectionClaims = new WeakMap<WebSocket, TicketClaims>();
 
 /**
  * Maps each WebSocket to the set of Yjs awareness clientIDs it has registered.
@@ -234,6 +234,29 @@ function handleConnection(
       const msgType = decoding.readVarUint(decoder);
 
       if (msgType === MSG_SYNC) {
+        const claims = connectionClaims.get(ws);
+        if (claims?.effectiveRole === "VIEWER") {
+          // Peek the sync message sub-type to identify write operations.
+          // y-protocols sync sub-types:
+          //   0 = SyncStep1 (client sends its state vector — read-only, needed for handshake)
+          //   1 = SyncStep2 (client sends doc diff to server — read-only, needed for handshake)
+          //   2 = Update    (client pushes a document mutation — must be blocked for viewers)
+          //
+          // SyncStep1 and SyncStep2 are both part of the mandatory initial sync
+          // handshake. Blocking SyncStep2 (as was done previously) prevented the
+          // handshake from completing and caused y-websocket to immediately close
+          // and reconnect, creating an infinite reconnect loop for view-only clients.
+          const peekDecoder = decoding.createDecoder(message);
+          decoding.readVarUint(peekDecoder); // consume outer MSG_SYNC type byte
+          const syncMsgType = decoding.readVarUint(peekDecoder);
+
+          if (syncMsgType === 2) {
+            // Update — actual document mutation. Silently drop; do not close
+            // the connection so the viewer stays connected in read-only mode.
+            return;
+          }
+        }
+
         const replyEncoder = encoding.createEncoder();
         encoding.writeVarUint(replyEncoder, MSG_SYNC);
         // Pass `ws` as the transaction origin so doc.on('update') knows not
@@ -245,6 +268,13 @@ function handleConnection(
           ws.send(encoding.toUint8Array(replyEncoder));
         }
       } else if (msgType === MSG_AWARENESS) {
+        // Viewer awareness updates are allowed through so that editors can see
+        // viewers in the presence bar. The client-side hook guarantees that
+        // VIEWER clients only publish their user identity (name, color,
+        // lastActive) and never send cursor positions, so no stripping is
+        // needed here. Blocking awareness from viewers (as was done previously)
+        // made them completely invisible to everyone else in the room.
+
         const update = decoding.readVarUint8Array(decoder);
 
         // Track which awareness clientIDs this socket has registered so we can
@@ -334,22 +364,25 @@ const wss = new WebSocketServer({
     callback: (pass: boolean, code?: number, message?: string) => void,
   ) {
     const url = new URL(info.req.url ?? "/", `http://localhost:${PORT}`);
-    const token = url.searchParams.get("token");
+    const ticket = url.searchParams.get("ticket");
 
-    if (!token) {
-      callback(false, WS_CLOSE_UNAUTHORIZED, "Missing token");
+    if (!ticket) {
+      callback(false, 401, "Missing room ticket");
       return;
     }
 
+    const roomName = url.pathname.replace(/^\//, "") || "default";
+
     try {
-      const claims = verifyToken(token);
+      const claims = verifyRoomTicket(ticket, roomName);
       // Temporarily store claims keyed by the request object; we'll move them
       // to the WebSocket instance in the 'connection' event below.
-      (info.req as IncomingMessage & { _claims?: VerifiedClaims })._claims =
+      (info.req as IncomingMessage & { _claims?: TicketClaims })._claims =
         claims;
       callback(true);
-    } catch {
-      callback(false, WS_CLOSE_UNAUTHORIZED, "Invalid or expired token");
+    } catch (e) {
+      console.error("[verifyClient] Failed to verify ticket:", (e as Error).message);
+      callback(false, 401, "Invalid or expired ticket");
     }
   },
 });
@@ -362,7 +395,7 @@ const wss = new WebSocketServer({
  * the connection to ensure the Y.Doc is fully hydrated first.
  */
 wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
-  const claims = (req as IncomingMessage & { _claims?: VerifiedClaims })
+  const claims = (req as IncomingMessage & { _claims?: TicketClaims })
     ._claims;
   if (!claims) {
     // Should never happen — verifyClient already rejected invalid connections.

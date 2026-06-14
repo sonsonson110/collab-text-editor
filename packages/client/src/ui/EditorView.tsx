@@ -24,6 +24,7 @@ import { getWordSelection, mapKeyboardEvent, buildSelectionRects } from "./utils
 import { LINE_HEIGHT } from "@/constants";
 import { Position } from "@/core/position/position";
 import { useEditorConfig } from "./EditorConfigContext";
+import { useEditorStore } from "@/store/editorStore";
 
 interface Props {
   viewModel: IViewModel;
@@ -31,6 +32,10 @@ interface Props {
 
 export function EditorView({ viewModel }: Props) {
   const { charWidth, tabSize } = useEditorConfig();
+  // Read effectiveRole reactively so the component re-renders when a guest
+  // claims a room and the role changes from VIEWER → OWNER.
+  const effectiveRole = useEditorStore((state) => state.effectiveRole);
+  const isViewer = effectiveRole === "VIEWER";
   const [lines, setLines] = useState(viewModel.getVisibleLines());
   const [cursor, setCursor] = useState(viewModel.getCursorViewportPosition());
   const [scrollTop, setScrollTop] = useState(viewModel.getScrollTop());
@@ -141,13 +146,16 @@ export function EditorView({ viewModel }: Props) {
       if (key === "x") {
         if (!viewModel.isSelectionCollapsed()) {
           navigator.clipboard.writeText(viewModel.getSelectedText());
-          viewModel.execute({ type: "delete_backward" });
+          if (!isViewer) {
+            viewModel.execute({ type: "delete_backward" });
+          }
         }
         e.preventDefault();
         return;
       }
       if (key === "v") {
         e.preventDefault();
+        if (isViewer) return;
         navigator.clipboard.readText().then((text) => {
           if (text) {
             viewModel.execute({ type: "insert_text", text });
@@ -159,6 +167,10 @@ export function EditorView({ viewModel }: Props) {
 
     const command = mapKeyboardEvent(e, { tabSize });
     if (command) {
+      if (isViewer && command.type !== "move_cursor_to" && command.type !== "select_to") {
+        e.preventDefault();
+        return;
+      }
       viewModel.execute(command);
       e.preventDefault();
     }
@@ -511,7 +523,7 @@ export function EditorView({ viewModel }: Props) {
             <Line key={line.lineNumber} line={line} />
           ))}
 
-          {cursor && isFocused && viewModel.isCursorVisible() && (
+          {cursor && isFocused && !isViewer && viewModel.isCursorVisible() && (
             <CursorComponent position={cursor} />
           )}
 

@@ -11,7 +11,7 @@ import { Spinner } from "@/components/ui/spinner";
 
 type PageState =
   | { phase: "loading" }
-  | { phase: "ready"; token: string; room: RoomResponse }
+  | { phase: "ready"; token: string; ticket: string; room: RoomResponse }
   | { phase: "error"; message: string };
 
 /**
@@ -45,21 +45,25 @@ export function RoomPage() {
 
         const response = await apiGet<RoomResponse>(`/api/rooms/by-slug/${roomId}`);
 
+        const ticketResponse = await apiGet<{ ticket: string }>(`/api/rooms/by-slug/${roomId}/ticket`);
+
         if (cancelled) {
           return;
         }
 
-        if (!response.ok || !response.data) {
+        if (!response.ok || !response.data || !ticketResponse.ok || !ticketResponse.data) {
           setState({
             phase: "error",
-            message: response.status === 404
+            message: response.status === 404 || ticketResponse.status === 404
               ? "Room not found"
-              : `Failed to load room (HTTP ${response.status})`,
+              : ticketResponse.status === 403
+              ? "Access forbidden"
+              : `Failed to load room (HTTP ${response.status || ticketResponse.status})`,
           });
           return;
         }
 
-        setState({ phase: "ready", token, room: response.data });
+        setState({ phase: "ready", token, ticket: ticketResponse.data.ticket, room: response.data });
       } catch (err) {
         if (!cancelled) {
           setState({
@@ -99,7 +103,7 @@ export function RoomPage() {
       <EditorSetup>
         <CollaborationLayout
           roomId={state.room.id}
-          token={state.token}
+          ticket={state.ticket}
           room={state.room}
         />
       </EditorSetup>

@@ -1,14 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCollaborativeEditor } from "@/hooks/useCollaborativeEditor";
 import { EditorView } from "@/ui/EditorView";
 import { UserPresenceBar } from "@/ui/components";
 import { AuthModal } from "@/ui/components/AuthModal";
 import type { RoomResponse } from "@/api/types";
-import { getTokenRole } from "@/auth/tokenStorage";
-import { apiPost } from "@/api/apiClient";
+import { getTokenRole, setToken } from "@/auth/tokenStorage";
+import { apiPost, apiGet } from "@/api/apiClient";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { useEditorStore } from "@/store/editorStore";
 
 /** localStorage key prefix that mirrors the one written by LandingPage. */
 const CREATOR_SECRET_KEY_PREFIX = "creator:";
@@ -16,8 +17,8 @@ const CREATOR_SECRET_KEY_PREFIX = "creator:";
 interface Props {
   /** The room's UUID — used as the Yjs room name and WebSocket path. */
   roomId: string;
-  /** A valid JWT passed to the WebSocket provider for authentication. */
-  token: string;
+  /** A valid WebSocket Room Ticket passed to the WebSocket provider for authentication. */
+  ticket: string;
   /** Room metadata fetched from the server before entering the room. */
   room: RoomResponse;
 }
@@ -39,14 +40,25 @@ interface Props {
  * Rule 3 ensures that only the creator sees the option to claim, not every
  * guest or authenticated user who joins as a collaborator.
  */
-export function CollaborationLayout({ roomId, token, room }: Props) {
+export function CollaborationLayout({ roomId, ticket, room }: Props) {
   const { viewModel, status, users, reconnect } = useCollaborativeEditor({
     roomId,
-    token,
+    ticket,
   });
 
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isRoomClaimed, setIsRoomClaimed] = useState(room.isClaimed);
+
+  const setRoom = useEditorStore((state) => state.setRoom);
+  const setEffectiveRole = useEditorStore((state) => state.setEffectiveRole);
+
+  useEffect(() => {
+    setRoom(room);
+    return () => {
+      setRoom(null);
+      setEffectiveRole(null);
+    };
+  }, [room, setRoom, setEffectiveRole]);
 
   // The claim banner is shown only to the browser that created the room.
   // localStorage is used so that if the user closes the tab or browser,
@@ -67,9 +79,15 @@ export function CollaborationLayout({ roomId, token, room }: Props) {
     });
     localStorage.removeItem(creatorSecretKey);
 
+    // Set the new member token so apiGet uses it
+    setToken(memberToken);
+
+    const ticketRes = await apiGet<{ ticket: string }>(`/api/rooms/by-slug/${room.slug}/ticket`);
+    if (ticketRes.ok && ticketRes.data) {
+      reconnect(ticketRes.data.ticket);
+    }
+
     setIsRoomClaimed(true);
-    // Reconnect WebSocket with the member JWT, preserving Y.Doc state.
-    reconnect(memberToken);
     setShowAuthModal(false);
   }
 
@@ -124,3 +142,4 @@ export function CollaborationLayout({ roomId, token, room }: Props) {
     </div>
   );
 }
+

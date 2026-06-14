@@ -9,3 +9,4 @@ export { UserPresenceBar } from "./UserPresenceBar";
 export type { ConnectionStatus } from "./UserPresenceBar";
 export { BottomBar } from "./BottomBar";
 export { AuthModal } from "./AuthModal";
+export { ShareModal } from "./ShareModal";

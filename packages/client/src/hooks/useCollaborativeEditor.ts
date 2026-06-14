@@ -33,8 +33,8 @@ const REMOTE_CURSOR_COLORS = [
 interface UseCollaborativeEditorProps {
   /** The room's UUID (used as the Yjs room name and WebSocket path segment). */
   roomId: string;
-  /** A valid JWT (guest or member) for the WebSocket upgrade handshake. */
-  token: string;
+  /** A valid WebSocket Room Ticket for the connection handshake. */
+  ticket: string;
 }
 
 interface UseCollaborativeEditorResult {
@@ -48,9 +48,9 @@ interface UseCollaborativeEditorResult {
    * Re-wires all awareness listeners so the new identity (display name, color)
    * is broadcast to peers and the signed-in user can see existing peers.
    *
-   * @param newToken The new Member JWT to connect with.
+   * @param newTicket The new Room Ticket to connect with.
    */
-  reconnect: (newToken: string) => void;
+  reconnect: (newTicket: string) => void;
 }
 
 /**
@@ -89,7 +89,7 @@ function generateDeterministicDisplayName(userId: string | null): string {
  */
 export function useCollaborativeEditor({
   roomId,
-  token,
+  ticket,
 }: UseCollaborativeEditorProps): UseCollaborativeEditorResult {
   const [viewModel, setViewModel] = useState<ViewModel | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
@@ -101,7 +101,7 @@ export function useCollaborativeEditor({
   const ydocRef = useRef<Y.Doc | null>(null);
   const vmRef = useRef<ViewModel | null>(null);
   const editorStateRef = useRef<EditorState | null>(null);
-  const initialUserId = extractUserId(token);
+  const initialUserId = extractUserId(ticket);
   const userHash = hashCode(initialUserId ?? "anonymous");
 
   const colorRef = useRef<string>(
@@ -122,6 +122,13 @@ export function useCollaborativeEditor({
    */
   const cursorBroadcastUnsubRef = useRef<(() => void) | null>(null);
 
+  /**
+   * Tracks the ytext observer cleanup function returned by `wireAwareness`.
+   * Called before calling `wireAwareness` again on reconnect to prevent
+   * multiple ytext observers from stacking on the same Y.Text instance.
+   */
+  const wireAwarenessUnsubRef = useRef<(() => void) | null>(null);
+
   // Derive the WS base URL: in dev the Vite proxy rewrites /ws → sync-server.
   // In production Nginx does the same. We never hardcode a port here.
   const wsBaseUrl =
@@ -130,42 +137,125 @@ export function useCollaborativeEditor({
 
   /**
    * Wires awareness state for a given provider:
-   *   1. Sets the local user field (name + color) so peers can render our avatar.
-   *   2. Publishes `userId` so peers can deduplicate stale awareness entries that
-   *      linger after a page reload (each reload creates a new Yjs `clientID`
-   *      for the same logical user).
-   *   3. Attaches the `change` listener that builds the connected-user list and
-   *      remote cursors.
+   *   1. Sets the local user identity (name, color, userId, role, cursor) in a
+   *      single atomic update so peers never see an intermediate partial state.
+   *   2. Attaches the `change` listener that builds the connected-user list and
+   *      re-resolves remote cursors.
+   *   3. Adds a ytext observer that re-resolves remote cursors whenever a remote
+   *      sync update arrives (fixes the "1 keystroke late" cursor lag).
    *   4. Re-subscribes the editor state so cursor moves are broadcast.
+   *
+   * Returns a cleanup function that removes the ytext observer. The caller must
+   * invoke this before calling `wireAwareness` again (e.g., on reconnect) to
+   * avoid stacking observers on the same Y.Text instance.
    *
    * Extracted so both the initial mount and `reconnect()` share identical wiring.
    */
+
+  /**
+   * Resolves all remote cursor relative positions against the current ydoc
+   * and pushes them to the ViewModel. Called from both the awareness `change`
+   * handler and the ytext observer so that remote cursors are re-rendered
+   * immediately after a sync update arrives (not just on the next awareness event).
+   */
+  function resolveAndSetRemoteCursors(
+    states: Map<number, Record<string, unknown>>,
+    ydoc: Y.Doc,
+    doc: CollaborativeDocument,
+    localUserId: string | null,
+    activeClientIds: Set<number>,
+  ): void {
+    const cursors: RemoteCursorAbsolute[] = [];
+
+    states.forEach((state: Record<string, unknown>, clientID: number) => {
+      if (!activeClientIds.has(clientID)) return;
+      if (clientID === ydoc.clientID) return;
+
+      const stateUserId = typeof state["userId"] === "string" ? state["userId"] : null;
+      // Suppress self-cursors from other tabs of the same user.
+      if (stateUserId !== null && stateUserId === localUserId) return;
+
+      const userInfo = state["user"] as { name: string; color: string } | undefined;
+      if (!userInfo) return;
+
+      const cursorState = state["cursor"] as
+        | { anchor: Y.RelativePosition; head: Y.RelativePosition }
+        | null
+        | undefined;
+
+      if (cursorState) {
+        const anchorAbs = Y.createAbsolutePositionFromRelativePosition(
+          cursorState.anchor,
+          ydoc,
+        );
+        const headAbs = Y.createAbsolutePositionFromRelativePosition(
+          cursorState.head,
+          ydoc,
+        );
+        if (anchorAbs && headAbs) {
+          cursors.push({
+            clientID,
+            user: userInfo,
+            anchor: doc.getPositionAt(anchorAbs.index),
+            head: doc.getPositionAt(headAbs.index),
+          });
+        }
+      }
+    });
+
+    if (vmRef.current) {
+      vmRef.current.setRemoteCursors(cursors);
+      const hasRemoteOnLine0 = cursors.some((c) => c.head.line === 0);
+      vmRef.current.reserveTopPadding(
+        TOP_PADDING_RESERVATION_KEYS.REMOTE_CURSOR_LINE_0,
+        hasRemoteOnLine0 ? LINE_HEIGHT : 0,
+      );
+    }
+  }
+
   function wireAwareness(
     provider: WebsocketProvider,
     ydoc: Y.Doc,
     ytext: Y.Text,
     doc: CollaborativeDocument,
-    token: string,
-  ): void {
+    ticket: string,
+    isViewer: boolean,
+  ): () => void {
     const awareness = provider.awareness;
 
-    // Publish our session identity to peers.
-    awareness.setLocalStateField("user", {
-      name: displayNameRef.current,
-      color: colorRef.current,
-    });
-
-    // Publish userId and lastActive timestamp so peers can deduplicate tabs
-    // and stale awareness entries by picking the most recently active session.
-    const localUserId = extractUserId(token);
+    // ── Publish local identity in a single atomic update ─────────────────────
+    // Using setLocalState (instead of multiple setLocalStateField calls) ensures
+    // that all fields — user, userId, lastActive, cursor, and role — are sent in
+    // one MSG_AWARENESS message. This prevents remote peers from receiving
+    // intermediate states (e.g., `user` present but `role` not yet set) which
+    // could temporarily show a VIEWER as a non-viewer or miss them entirely.
+    const localUserId = extractUserId(ticket);
+    const localState: Record<string, unknown> = {
+      user: { name: displayNameRef.current, color: colorRef.current },
+      lastActive: Date.now(),
+    };
     if (localUserId !== null) {
-      awareness.setLocalStateField("userId", localUserId);
+      localState["userId"] = localUserId;
     }
-    awareness.setLocalStateField("lastActive", Date.now());
+    if (isViewer) {
+      // Viewers publish null cursor so stale cursor state is never rendered
+      // for them. The role field lets editors show the "View-only" indicator.
+      localState["cursor"] = null;
+      localState["role"] = "VIEWER";
+    }
+    awareness.setLocalState(localState);
 
+    // ── Build the active-client set used by both cursor-resolution paths ──────
+    // Shared between the awareness `change` handler and the ytext observer so
+    // we don't duplicate the deduplication logic.
+    let activeClientIds = new Set<number>();
+
+    // ── Awareness change handler ──────────────────────────────────────────────
+    // Fires when any peer joins, leaves, or updates their state.
+    // Rebuilds the presence-bar user list AND re-resolves remote cursors.
     awareness.on("change", () => {
       const states = awareness.getStates();
-      
+
       // Pass 1: Deduplicate active clients by userId based on lastActive timestamp.
       // We always force the local client to win for its own presence bar.
       const bestClientPerUser = new Map<
@@ -175,111 +265,73 @@ export function useCollaborativeEditor({
 
       states.forEach((state: Record<string, unknown>, clientID: number) => {
         const userInfo = state["user"] as { name: string; color: string } | undefined;
-        if (!userInfo) {
-          return;
-        }
+        if (!userInfo) return;
 
         const stateUserId = typeof state["userId"] === "string" ? state["userId"] : null;
         const isLocal = clientID === ydoc.clientID;
-        
+
         const key = stateUserId !== null ? stateUserId : `clientID:${clientID}`;
         const lastActive = typeof state["lastActive"] === "number" ? state["lastActive"] : 0;
-        
+
         const entry: ConnectedUser = {
           clientID,
           name: userInfo.name,
           color: userInfo.color,
           isLocal,
+          // For the local client use the known isViewer flag; for remote peers
+          // read the role field they published in their awareness state.
+          isViewer: isLocal ? isViewer : state["role"] === "VIEWER",
         };
 
         const existing = bestClientPerUser.get(key);
-        
         if (isLocal) {
-           bestClientPerUser.set(key, { clientID, entry, lastActive: Infinity });
+          bestClientPerUser.set(key, { clientID, entry, lastActive: Infinity });
         } else if (!existing) {
-           bestClientPerUser.set(key, { clientID, entry, lastActive });
-        } else {
-           if (existing.lastActive !== Infinity && lastActive > existing.lastActive) {
-               bestClientPerUser.set(key, { clientID, entry, lastActive });
-           }
+          bestClientPerUser.set(key, { clientID, entry, lastActive });
+        } else if (existing.lastActive !== Infinity && lastActive > existing.lastActive) {
+          bestClientPerUser.set(key, { clientID, entry, lastActive });
         }
       });
 
       const connectedUsers: ConnectedUser[] = [];
-      const activeClientIds = new Set<number>();
+      // Update the shared activeClientIds so the ytext observer uses the same set.
+      activeClientIds = new Set<number>();
 
       bestClientPerUser.forEach((value) => {
         connectedUsers.push(value.entry);
         activeClientIds.add(value.clientID);
       });
 
-      // Pass 2: Collect valid remote cursors for the winning active clients only.
-      const cursors: RemoteCursorAbsolute[] = [];
-
-      states.forEach((state: Record<string, unknown>, clientID: number) => {
-        // Only render cursors for the most recently active client per user
-        if (!activeClientIds.has(clientID)) {
-          return;
-        }
-
-        const isLocal = clientID === ydoc.clientID;
-        if (isLocal) {
-          return;
-        }
-
-        const stateUserId = typeof state["userId"] === "string" ? state["userId"] : null;
-        
-        // Suppress self-cursors: don't show cursors from other tabs of the local user
-        if (stateUserId !== null && stateUserId === localUserId) {
-          return;
-        }
-
-        const userInfo = state["user"] as { name: string; color: string } | undefined;
-        if (!userInfo) {
-          return;
-        }
-
-        const cursorState = state["cursor"] as
-          | {
-              anchor: Y.RelativePosition;
-              head: Y.RelativePosition;
-            }
-          | null
-          | undefined;
-
-        if (cursorState) {
-          const anchorAbs = Y.createAbsolutePositionFromRelativePosition(
-            cursorState.anchor,
-            ydoc,
-          );
-          const headAbs = Y.createAbsolutePositionFromRelativePosition(
-            cursorState.head,
-            ydoc,
-          );
-
-          if (anchorAbs && headAbs) {
-            cursors.push({
-              clientID,
-              user: userInfo,
-              anchor: doc.getPositionAt(anchorAbs.index),
-              head: doc.getPositionAt(headAbs.index),
-            });
-          }
-        }
-      });
-
-      if (vmRef.current) {
-        vmRef.current.setRemoteCursors(cursors);
-
-        const hasRemoteOnLine0 = cursors.some((c) => c.head.line === 0);
-        vmRef.current.reserveTopPadding(
-          TOP_PADDING_RESERVATION_KEYS.REMOTE_CURSOR_LINE_0,
-          hasRemoteOnLine0 ? LINE_HEIGHT : 0,
-        );
-      }
+      // Pass 2: Re-resolve all remote cursors with the current ydoc state.
+      resolveAndSetRemoteCursors(states, ydoc, doc, localUserId, activeClientIds);
 
       setUsers(connectedUsers);
     });
+
+    // ── ytext observer — re-resolve cursors after remote syncs ────────────────
+    // The `awareness.on("change")` handler only fires when awareness state
+    // changes, NOT when a Yjs sync update (new text) arrives. This means remote
+    // cursors stay stuck at the pre-sync offset until the next awareness event
+    // fires — making every remote cursor appear 1 keystroke behind the typist.
+    //
+    // By also observing ytext, we re-resolve and re-render remote cursors
+    // immediately after each remote document update, using the freshly updated
+    // ydoc so the cursor positions are always correct.
+    //
+    // Local changes (origin === "local") are skipped: for local edits the
+    // cursor broadcast listener (below) already handles the update, and the
+    // local cursor is never shown as a remote cursor anyway.
+    const ytextObserver = (event: Y.YTextEvent) => {
+      if (event.transaction.origin === "local") return;
+      resolveAndSetRemoteCursors(
+        awareness.getStates(),
+        ydoc,
+        doc,
+        localUserId,
+        activeClientIds,
+      );
+    };
+    ytext.observe(ytextObserver);
 
     // Clean up previous cursor-broadcast subscription before re-subscribing.
     // Without this, reconnect() would stack listeners, with stale ones
@@ -289,21 +341,33 @@ export function useCollaborativeEditor({
       cursorBroadcastUnsubRef.current = null;
     }
 
-    // Re-broadcast local cursor after every editor state change.
-    const editorState = editorStateRef.current;
-    if (editorState) {
-      cursorBroadcastUnsubRef.current = editorState.subscribe(() => {
-        awareness.setLocalStateField("lastActive", Date.now());
-        const activeCursor = editorState.getCursor();
-        broadcastCursor(
-          awareness,
-          ytext,
-          doc,
-          activeCursor.anchor,
-          activeCursor.active,
-        );
-      });
+    // Viewers are read-only observers — they must not broadcast cursor positions.
+    // Their presence (name/color) is already published above and is sufficient
+    // for the presence bar on other clients. Skipping this subscription also
+    // prevents unnecessary awareness traffic from view-only clients.
+    if (!isViewer) {
+      const editorState = editorStateRef.current;
+      if (editorState) {
+        cursorBroadcastUnsubRef.current = editorState.subscribe(() => {
+          awareness.setLocalStateField("lastActive", Date.now());
+          const activeCursor = editorState.getCursor();
+          broadcastCursor(
+            awareness,
+            ytext,
+            doc,
+            activeCursor.anchor,
+            activeCursor.active,
+          );
+        });
+      }
     }
+
+    // Return a cleanup function that removes the ytext observer. The caller
+    // is responsible for invoking this before setting up a new wireAwareness
+    // (e.g., on reconnect) to avoid stacking observers on the same ytext.
+    return () => {
+      ytext.unobserve(ytextObserver);
+    };
   }
 
   useEffect(() => {
@@ -313,7 +377,7 @@ export function useCollaborativeEditor({
 
     const provider = new WebsocketProvider(wsBaseUrl, roomId, ydoc, {
       connect: true,
-      params: { token },
+      params: { ticket },
     });
     providerRef.current = provider;
 
@@ -350,7 +414,30 @@ export function useCollaborativeEditor({
     });
     useEditorStore.getState().setSelectionCount(initialSelectionCount);
 
-    wireAwareness(provider, ydoc, ytext, doc, token);
+    // Derive viewer status from the ticket so wireAwareness and EditorView can
+    // both gate viewer-specific behaviour without a separate round-trip.
+    let isViewerSession = false;
+    try {
+      const [, payloadB64] = ticket.split(".");
+      if (payloadB64) {
+        const payload = JSON.parse(atob(payloadB64)) as Record<string, unknown>;
+        if (typeof payload.effectiveRole === "string") {
+          useEditorStore.getState().setEffectiveRole(payload.effectiveRole);
+          isViewerSession = payload.effectiveRole === "VIEWER";
+        }
+      }
+    } catch {
+      // Ignore malformed tickets
+    }
+
+    wireAwarenessUnsubRef.current = wireAwareness(
+      provider,
+      ydoc,
+      ytext,
+      doc,
+      ticket,
+      isViewerSession,
+    );
 
     // Track connection status for the UI indicator.
     provider.on("status", ({ status: s }: { status: string }) => {
@@ -360,6 +447,8 @@ export function useCollaborativeEditor({
     return () => {
       storeUnsubscribe();
       useEditorStore.getState().setLastSavedAt(null);
+      wireAwarenessUnsubRef.current?.();
+      wireAwarenessUnsubRef.current = null;
       provider.destroy();
       providerRef.current = null;
     };
@@ -374,7 +463,7 @@ export function useCollaborativeEditor({
    * so peers see a stable name even after a guest upgrades to a member token.
    */
   const reconnect = useCallback(
-    (newToken: string) => {
+    (newTicket: string) => {
       if (!providerRef.current || !ydocRef.current) {
         return;
       }
@@ -384,14 +473,40 @@ export function useCollaborativeEditor({
 
       const newProvider = new WebsocketProvider(wsBaseUrl, roomId, ydoc, {
         connect: true,
-        params: { token: newToken },
+        params: { ticket: newTicket },
       });
       providerRef.current = newProvider;
 
       registerSnapshotSavedHandler(newProvider);
 
+      // Parse the effectiveRole from the new ticket and update the store so
+      // that the BottomBar (RoomAccessIndicator) reflects the upgraded role
+      // (e.g., GUEST → OWNER) immediately, without requiring a page reload.
+      let isViewerReconnect = false;
+      try {
+        const [, payloadB64] = newTicket.split(".");
+        if (payloadB64) {
+          const payload = JSON.parse(atob(payloadB64)) as Record<string, unknown>;
+          if (typeof payload.effectiveRole === "string") {
+            useEditorStore.getState().setEffectiveRole(payload.effectiveRole);
+            isViewerReconnect = payload.effectiveRole === "VIEWER";
+          }
+        }
+      } catch {
+        // Ignore malformed tokens
+      }
+
       const doc = new CollaborativeDocument(ytext);
-      wireAwareness(newProvider, ydoc, ytext, doc, newToken);
+      // Clean up the previous ytext observer before registering a new one.
+      wireAwarenessUnsubRef.current?.();
+      wireAwarenessUnsubRef.current = wireAwareness(
+        newProvider,
+        ydoc,
+        ytext,
+        doc,
+        newTicket,
+        isViewerReconnect,
+      );
 
       newProvider.on("status", ({ status: s }: { status: string }) => {
         setStatus(s as ConnectionStatus);

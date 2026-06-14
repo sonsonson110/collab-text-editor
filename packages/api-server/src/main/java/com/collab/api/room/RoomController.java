@@ -120,4 +120,19 @@ public class RoomController {
         String requesterId = authentication.getName();
         return roomService.getRoomBySlug(slug, requesterId);
     }
+    /**
+     * Returns a WebSocket Room Ticket JWT for connecting to the sync-server.
+     * Evaluates permissions based on AccessMode and RoomMember records.
+     *
+     * @return {@code 200 OK} with a JSON object containing the ticket.
+     */
+    @GetMapping("/by-slug/{slug}/ticket")
+    public ResponseEntity<java.util.Map<String, String>> getRoomTicket(
+            @PathVariable String slug,
+            Authentication authentication
+    ) {
+        String requesterId = authentication.getName();
+        String ticket = roomService.getRoomTicket(slug, requesterId);
+        return ResponseEntity.ok(java.util.Map.of("ticket", ticket));
+    }
 }
