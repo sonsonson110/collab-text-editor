@@ -42,6 +42,14 @@ interface UseCollaborativeEditorResult {
   status: ConnectionStatus;
   users: ConnectedUser[];
   /**
+   * Whether the initial Yjs sync handshake has completed.
+   *
+   * `false` until the server's full document state (including any hydrated
+   * snapshot) has been transmitted to the client via the SyncStep1/SyncStep2
+   * round-trip. The editor should not be interactive until this is `true`.
+   */
+  isSynced: boolean;
+  /**
    * Reconnects the WebSocket provider with a new token while preserving the
    * local Y.Doc state. Used after claiming a room (guest → member upgrade).
    *
@@ -94,6 +102,7 @@ export function useCollaborativeEditor({
   const [viewModel, setViewModel] = useState<ViewModel | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const [users, setUsers] = useState<ConnectedUser[]>([]);
+  const [isSynced, setIsSynced] = useState(false);
 
   // Stable refs so reconnect() can access the latest instances without being
   // listed as useEffect dependencies.
@@ -113,7 +122,9 @@ export function useCollaborativeEditor({
    * lifetime of this session. Stored in a ref so reconnect() reuses the same
    * name without triggering re-renders.
    */
-  const displayNameRef = useRef<string>(generateDeterministicDisplayName(initialUserId));
+  const displayNameRef = useRef<string>(
+    generateDeterministicDisplayName(initialUserId),
+  );
 
   /**
    * Tracks the unsubscribe function returned by `editorState.subscribe()`
@@ -158,24 +169,28 @@ export function useCollaborativeEditor({
    * handler and the ytext observer so that remote cursors are re-rendered
    * immediately after a sync update arrives (not just on the next awareness event).
    */
-  function resolveAndSetRemoteCursors(
-    states: Map<number, Record<string, unknown>>,
-    ydoc: Y.Doc,
-    doc: CollaborativeDocument,
-    localUserId: string | null,
-    activeClientIds: Set<number>,
-  ): void {
+  const resolveAndSetRemoteCursors = useCallback(
+    (
+      states: Map<number, Record<string, unknown>>,
+      ydoc: Y.Doc,
+      doc: CollaborativeDocument,
+      localUserId: string | null,
+      activeClientIds: Set<number>,
+    ): void => {
     const cursors: RemoteCursorAbsolute[] = [];
 
     states.forEach((state: Record<string, unknown>, clientID: number) => {
       if (!activeClientIds.has(clientID)) return;
       if (clientID === ydoc.clientID) return;
 
-      const stateUserId = typeof state["userId"] === "string" ? state["userId"] : null;
+      const stateUserId =
+        typeof state["userId"] === "string" ? state["userId"] : null;
       // Suppress self-cursors from other tabs of the same user.
       if (stateUserId !== null && stateUserId === localUserId) return;
 
-      const userInfo = state["user"] as { name: string; color: string } | undefined;
+      const userInfo = state["user"] as
+        | { name: string; color: string }
+        | undefined;
       if (!userInfo) return;
 
       const cursorState = state["cursor"] as
@@ -211,16 +226,17 @@ export function useCollaborativeEditor({
         hasRemoteOnLine0 ? LINE_HEIGHT : 0,
       );
     }
-  }
+  }, []);
 
-  function wireAwareness(
-    provider: WebsocketProvider,
-    ydoc: Y.Doc,
-    ytext: Y.Text,
-    doc: CollaborativeDocument,
-    ticket: string,
-    isViewer: boolean,
-  ): () => void {
+  const wireAwareness = useCallback(
+    (
+      provider: WebsocketProvider,
+      ydoc: Y.Doc,
+      ytext: Y.Text,
+      doc: CollaborativeDocument,
+      ticket: string,
+      isViewer: boolean,
+    ): () => void => {
     const awareness = provider.awareness;
 
     // ── Publish local identity in a single atomic update ─────────────────────
@@ -264,14 +280,18 @@ export function useCollaborativeEditor({
       >();
 
       states.forEach((state: Record<string, unknown>, clientID: number) => {
-        const userInfo = state["user"] as { name: string; color: string } | undefined;
+        const userInfo = state["user"] as
+          | { name: string; color: string }
+          | undefined;
         if (!userInfo) return;
 
-        const stateUserId = typeof state["userId"] === "string" ? state["userId"] : null;
+        const stateUserId =
+          typeof state["userId"] === "string" ? state["userId"] : null;
         const isLocal = clientID === ydoc.clientID;
 
         const key = stateUserId !== null ? stateUserId : `clientID:${clientID}`;
-        const lastActive = typeof state["lastActive"] === "number" ? state["lastActive"] : 0;
+        const lastActive =
+          typeof state["lastActive"] === "number" ? state["lastActive"] : 0;
 
         const entry: ConnectedUser = {
           clientID,
@@ -288,7 +308,10 @@ export function useCollaborativeEditor({
           bestClientPerUser.set(key, { clientID, entry, lastActive: Infinity });
         } else if (!existing) {
           bestClientPerUser.set(key, { clientID, entry, lastActive });
-        } else if (existing.lastActive !== Infinity && lastActive > existing.lastActive) {
+        } else if (
+          existing.lastActive !== Infinity &&
+          lastActive > existing.lastActive
+        ) {
           bestClientPerUser.set(key, { clientID, entry, lastActive });
         }
       });
@@ -303,7 +326,13 @@ export function useCollaborativeEditor({
       });
 
       // Pass 2: Re-resolve all remote cursors with the current ydoc state.
-      resolveAndSetRemoteCursors(states, ydoc, doc, localUserId, activeClientIds);
+      resolveAndSetRemoteCursors(
+        states,
+        ydoc,
+        doc,
+        localUserId,
+        activeClientIds,
+      );
 
       setUsers(connectedUsers);
     });
@@ -368,7 +397,7 @@ export function useCollaborativeEditor({
     return () => {
       ytext.unobserve(ytextObserver);
     };
-  }
+  }, [resolveAndSetRemoteCursors]);
 
   useEffect(() => {
     const ydoc = new Y.Doc();
@@ -394,7 +423,19 @@ export function useCollaborativeEditor({
 
     const vm = new ViewModel(editorState);
     vmRef.current = vm;
-    setViewModel(vm);
+
+    // ── Gate editor interactivity on initial sync completion ──────────────
+    // The ViewModel is only exposed to React after the Yjs sync handshake
+    // finishes (SyncStep1 → SyncStep2 round-trip). This ensures the client's
+    // Y.Doc contains the full hydrated snapshot before the user can edit.
+    // Without this gate, the user would see and edit a blank editor while
+    // the sync server is still fetching the snapshot from the api-server.
+    provider.on("sync", (synced: boolean) => {
+      setIsSynced(synced);
+      if (synced) {
+        setViewModel(vm);
+      }
+    });
 
     const storeUnsubscribe = editorState.subscribe(() => {
       const activeCursor = editorState.getCursor().active;
@@ -451,6 +492,8 @@ export function useCollaborativeEditor({
       wireAwarenessUnsubRef.current = null;
       provider.destroy();
       providerRef.current = null;
+      setIsSynced(false);
+      setViewModel(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, wsBaseUrl]);
@@ -471,11 +514,25 @@ export function useCollaborativeEditor({
       const ytext = ydoc.getText("content");
       providerRef.current.destroy();
 
+      // Reset sync gate — the new provider will trigger a fresh handshake.
+      // Even though the Y.Doc is preserved (and should sync near-instantly),
+      // we still gate for correctness.
+      setIsSynced(false);
+      setViewModel(null);
+
       const newProvider = new WebsocketProvider(wsBaseUrl, roomId, ydoc, {
         connect: true,
         params: { ticket: newTicket },
       });
       providerRef.current = newProvider;
+
+      // Re-gate ViewModel exposure on sync completion for the new provider.
+      newProvider.on("sync", (synced: boolean) => {
+        setIsSynced(synced);
+        if (synced && vmRef.current) {
+          setViewModel(vmRef.current);
+        }
+      });
 
       registerSnapshotSavedHandler(newProvider);
 
@@ -486,7 +543,10 @@ export function useCollaborativeEditor({
       try {
         const [, payloadB64] = newTicket.split(".");
         if (payloadB64) {
-          const payload = JSON.parse(atob(payloadB64)) as Record<string, unknown>;
+          const payload = JSON.parse(atob(payloadB64)) as Record<
+            string,
+            unknown
+          >;
           if (typeof payload.effectiveRole === "string") {
             useEditorStore.getState().setEffectiveRole(payload.effectiveRole);
             isViewerReconnect = payload.effectiveRole === "VIEWER";
@@ -512,12 +572,10 @@ export function useCollaborativeEditor({
         setStatus(s as ConnectionStatus);
       });
     },
-    // wireAwareness is defined in the render scope; roomId and wsBaseUrl are
-    // the only external stable dependencies.
-    [roomId, wsBaseUrl],
+    [roomId, wireAwareness, wsBaseUrl],
   );
 
-  return { viewModel, status, users, reconnect };
+  return { viewModel, status, users, isSynced, reconnect };
 }
 
 /**

@@ -41,10 +41,11 @@ interface Props {
  * guest or authenticated user who joins as a collaborator.
  */
 export function CollaborationLayout({ roomId, ticket, room }: Props) {
-  const { viewModel, status, users, reconnect } = useCollaborativeEditor({
-    roomId,
-    ticket,
-  });
+  const { viewModel, status, users, isSynced, reconnect } =
+    useCollaborativeEditor({
+      roomId,
+      ticket,
+    });
 
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isRoomClaimed, setIsRoomClaimed] = useState(room.isClaimed);
@@ -91,13 +92,21 @@ export function CollaborationLayout({ roomId, ticket, room }: Props) {
     setShowAuthModal(false);
   }
 
+  // Show a phase-appropriate loading message while the editor is not ready.
+  // The ViewModel is only exposed after the Yjs sync handshake completes,
+  // which guarantees the full snapshot has been transmitted to the client.
   if (!viewModel) {
+    const loadingMessage =
+      status === "connected" && !isSynced
+        ? "Syncing document…"
+        : "Connecting…";
+
     return (
       <div className="flex flex-col h-full">
         <UserPresenceBar users={users} connectionStatus={status} />
         <div className="flex-1 flex items-center justify-center text-muted-foreground gap-2 font-mono text-sm">
           <Spinner className="size-4" />
-          Connecting…
+          {loadingMessage}
         </div>
       </div>
     );
