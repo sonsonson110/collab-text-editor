@@ -11,24 +11,30 @@ Live demo: <https://collab-text-editor.pson02.io.vn/>
 
 ```
 Browser (Vite + React)
-  core/   → Document, LineIndex, Position, Range
-  editor/ → EditorState, Cursor, History
-  view/   → ViewModel (viewport math)
-  ui/     → EditorView, Components (React)
+  core/          → Document, LineIndex, Position, Range
+  editor/        → EditorState, Cursor, History
+  view/          → ViewModel (viewport math)
+  ui/            → EditorView, Components (React)
   collaboration/ → CollaborativeDocument (Y.Text), awareness
        │
        │ WebSocket (Yjs sync + awareness)
+       │ Room Ticket JWT (per-room, 5 min TTL)
        ▼
 sync-server (Node.js + ws)
-  • Per-room Y.Doc management
-  • JWT auth at WebSocket upgrade
-  • Debounced snapshot persistence
+  • Per-room Y.Doc management + snapshot hydration
+  • Room Ticket auth at WebSocket upgrade (verifyRoomTicket)
+  • VIEWER write-blocking (drops MSG_SYNC Update sub-type)
+  • Debounced snapshot persistence (MSG_SNAPSHOT_SAVED)
+  • Real-time permission fan-out (MSG_PERMISSION_CHANGED)
        │
        │ HTTP (x-internal-secret)
        ▼
 api-server (Spring Boot 3)
   • Auth (register / login / guest JWT)
   • Room CRUD + claim flow
+  • Room Ticket issuance (GET /by-slug/:slug/ticket)
+  • Permission management (access mode, member CRUD)
+  • Async sync-server notification (SyncServerNotifier)
   • Snapshot storage (PostgreSQL)
 ```
 

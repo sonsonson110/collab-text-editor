@@ -13,6 +13,12 @@ interface EditorState {
   setLastSavedAt: (timestamp: number | null) => void;
   setEffectiveRole: (role: string | null) => void;
   setRoom: (room: RoomResponse | null) => void;
+  /**
+   * Updates the `accessMode` field on the current room without replacing the
+   * entire room object. Used by the MSG_PERMISSION_CHANGED handler to propagate
+   * real-time access-mode changes to `RoomAccessIndicator` without a round-trip.
+   */
+  updateRoomAccessMode: (accessMode: string) => void;
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
@@ -26,6 +32,10 @@ export const useEditorStore = create<EditorState>((set) => ({
   setLastSavedAt: (lastSavedAt) => set({ lastSavedAt }),
   setEffectiveRole: (effectiveRole) => set({ effectiveRole }),
   setRoom: (room) => set({ room }),
+  updateRoomAccessMode: (accessMode) =>
+    set((state) =>
+      state.room ? { room: { ...state.room, accessMode } } : {},
+    ),
 }));
 
 

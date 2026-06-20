@@ -40,19 +40,22 @@ public class RoomService {
     private final SlugGenerator slugGenerator;
     private final JwtService jwtService;
     private final com.collab.api.user.UserService userService;
+    private final SyncServerNotifier syncServerNotifier;
 
     public RoomService(
             RoomRepository roomRepository,
             RoomMemberRepository roomMemberRepository,
             SlugGenerator slugGenerator,
             JwtService jwtService,
-            com.collab.api.user.UserService userService
+            com.collab.api.user.UserService userService,
+            SyncServerNotifier syncServerNotifier
     ) {
         this.roomRepository = roomRepository;
         this.roomMemberRepository = roomMemberRepository;
         this.slugGenerator = slugGenerator;
         this.jwtService = jwtService;
         this.userService = userService;
+        this.syncServerNotifier = syncServerNotifier;
     }
 
     /**
@@ -218,14 +221,28 @@ public class RoomService {
 
     /**
      * Generates a WebSocket Room Ticket JWT for the given room slug and requester.
+     *
+     * <p>The ticket carries an {@code isMember} boolean claim that is {@code true} when the
+     * requester is an explicit DB member of the room (OWNER or present in {@code room_members})
+     * and {@code false} for public-access connections.  The sync-server uses this claim to
+     * determine which connections to keep alive when the room transitions to PRIVATE mode.
      */
     public String getRoomTicket(String slug, String requesterId) {
         Room room = roomRepository.findBySlug(slug)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Room not found"));
 
         String effectiveRole = calculateEffectiveRole(room, requesterId);
-        return jwtService.generateRoomTicket(requesterId, room.getId().toString(), effectiveRole);
+
+        // Determine whether the requester has explicit DB membership (OWNER or room_members row).
+        // Guest IDs are not valid UUIDs, so tryParseUuid returns empty — they are never members.
+        boolean isMember = tryParseUuid(requesterId).map(uid ->
+                uid.equals(room.getOwnerId()) ||
+                roomMemberRepository.existsByRoomIdAndUserId(room.getId(), uid)
+        ).orElse(false);
+
+        return jwtService.generateRoomTicket(requesterId, room.getId().toString(), effectiveRole, isMember);
     }
+
 
     // -------------------------------------------------------------------------
     // Permission Management
@@ -235,10 +252,13 @@ public class RoomService {
     public void updateAccessMode(UUID roomId, UUID callerId, AccessMode newMode) {
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Room not found"));
-        
+
         verifyOwner(room, callerId);
         room.setAccessMode(newMode);
         roomRepository.save(room);
+
+        // Notify the sync-server so connected clients are updated in real time.
+        syncServerNotifier.notifyAccessModeChanged(roomId, newMode.name());
     }
 
     public List<RoomMember> getRoomMembers(UUID roomId, UUID callerId) {
@@ -253,7 +273,7 @@ public class RoomService {
     public RoomMember addMember(UUID roomId, UUID callerId, String targetUserEmail, RoomRole role) {
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Room not found"));
-        
+
         verifyOwner(room, callerId);
 
         User targetUser = userService.findByEmail(targetUserEmail)
@@ -268,14 +288,19 @@ public class RoomService {
                 .userId(targetUser.getId())
                 .role(role)
                 .build();
-        return roomMemberRepository.save(newMember);
+        RoomMember saved = roomMemberRepository.save(newMember);
+
+        // If the new member was previously connected under a public access mode,
+        // notify so the sync-server can promote their effective role in real time.
+        syncServerNotifier.notifyMemberRoleChanged(roomId, targetUser.getId(), role.name());
+        return saved;
     }
 
     @Transactional
     public RoomMember updateMemberRole(UUID roomId, UUID callerId, UUID targetUserId, RoomRole newRole) {
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Room not found"));
-        
+
         verifyOwner(room, callerId);
 
         RoomMember member = roomMemberRepository.findByRoomIdAndUserId(roomId, targetUserId)
@@ -290,14 +315,18 @@ public class RoomService {
         }
 
         member.setRole(newRole);
-        return roomMemberRepository.save(member);
+        RoomMember saved = roomMemberRepository.save(member);
+
+        // Notify the sync-server so the target user's WebSocket session is updated in real time.
+        syncServerNotifier.notifyMemberRoleChanged(roomId, targetUserId, newRole.name());
+        return saved;
     }
 
     @Transactional
     public void removeMember(UUID roomId, UUID callerId, UUID targetUserId) {
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Room not found"));
-        
+
         verifyOwner(room, callerId);
 
         RoomMember member = roomMemberRepository.findByRoomIdAndUserId(roomId, targetUserId)
@@ -312,6 +341,9 @@ public class RoomService {
         }
 
         roomMemberRepository.delete(member);
+
+        // Notify the sync-server to close the removed user's WebSocket session (code 4403).
+        syncServerNotifier.notifyMemberRemoved(roomId, targetUserId);
     }
 
     private void verifyOwner(Room room, UUID callerId) {

@@ -143,18 +143,41 @@ public class JwtService {
     /**
      * Generates a short-lived signed JWT ticket for connecting to a specific room.
      *
+     * <p>Claim layout:
+     * <pre>
+     * {
+     *   "sub":           "&lt;userId UUID | guestId string&gt;",
+     *   "roomId":        "&lt;room UUID string&gt;",
+     *   "effectiveRole": "OWNER | EDITOR | VIEWER",
+     *   "isMember":      true | false,
+     *   "type":          "room_ticket",
+     *   "iat":           &lt;issued-at epoch seconds&gt;,
+     *   "exp":           &lt;expiry epoch seconds (5 minutes)&gt;
+     * }
+     * </pre>
+     *
+     * <p>{@code isMember} is {@code true} for any user who is an explicit DB member of the room
+     * (OWNER or present in the {@code room_members} table), and {@code false} for connections
+     * granted access solely by the room's public access mode.
+     *
+     * <p>The sync-server reads {@code isMember} when applying a PRIVATE access-mode change:
+     * explicit members stay connected; public-access connections are closed with code 4403.
+     *
      * @param subject       The user UUID or guest identifier.
      * @param roomId        The UUID string of the room.
      * @param effectiveRole The effective role (OWNER, EDITOR, VIEWER) the user has in the room.
+     * @param isMember      {@code true} if the user is an explicit DB member; {@code false} for
+     *                      connections derived from the room's public access mode.
      * @return A compact signed JWT string.
      */
-    public String generateRoomTicket(String subject, String roomId, String effectiveRole) {
+    public String generateRoomTicket(String subject, String roomId, String effectiveRole, boolean isMember) {
         long now = System.currentTimeMillis();
         long ticketExpirationMs = 5 * 60 * 1000; // 5 minutes
         return Jwts.builder()
                 .subject(subject)
                 .claim("roomId", roomId)
                 .claim("effectiveRole", effectiveRole)
+                .claim("isMember", isMember)
                 .claim("type", "room_ticket")
                 .issuedAt(new Date(now))
                 .expiration(new Date(now + ticketExpirationMs))

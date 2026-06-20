@@ -44,3 +44,8 @@ app:
   # Must match INTERNAL_API_SECRET in the sync-server environment.
   internal-api:
     secret: ${APP_INTERNAL_API_SECRET:sync-server-internal-secret-change-me}
+
+  # Base URL of the sync-server's internal HTTP listener (PORT+1 = 1235 by default).
+  # Production: override via SYNC_SERVER_BASE_URL environment variable (e.g. http://sync-server:1235).
+  sync-server:
+    base-url: ${SYNC_SERVER_BASE_URL:http://localhost:1235}

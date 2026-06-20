@@ -52,6 +52,16 @@ export function verifyToken(token: string): VerifiedClaims {
 export interface TicketClaims {
   userId: string;
   effectiveRole: string;
+  /**
+   * True when the user is an explicit DB member of the room (OWNER or in room_members).
+   * False for public-access connections (effectiveRole derived from PUBLIC_EDIT / PUBLIC_VIEW).
+   *
+   * Used by the sync-server's permission handler to decide which connections survive a
+   * PRIVATE access-mode transition without a DB round-trip.
+   *
+   * Defaults to `false` if the claim is absent (backwards-compatible with old tickets).
+   */
+  isMember: boolean;
 }
 
 export function verifyRoomTicket(token: string, expectedRoomId: string): TicketClaims {
@@ -61,6 +71,7 @@ export function verifyRoomTicket(token: string, expectedRoomId: string): TicketC
     sub: string;
     roomId: string;
     effectiveRole: string;
+    isMember?: boolean;
     type: string;
   };
 
@@ -72,5 +83,10 @@ export function verifyRoomTicket(token: string, expectedRoomId: string): TicketC
     throw new Error("Ticket does not match the requested room");
   }
 
-  return { userId: payload.sub, effectiveRole: payload.effectiveRole };
+  return {
+    userId: payload.sub,
+    effectiveRole: payload.effectiveRole,
+    // Default to false for backwards-compat with tickets issued before this claim existed.
+    isMember: payload.isMember ?? false,
+  };
 }

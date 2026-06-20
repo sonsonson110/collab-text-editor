@@ -14,6 +14,9 @@ import { useEditorStore } from "@/store/editorStore";
 /** localStorage key prefix that mirrors the one written by LandingPage. */
 const CREATOR_SECRET_KEY_PREFIX = "creator:";
 
+/** WebSocket close code sent by the sync-server when a client loses room access. */
+const WS_CLOSE_FORBIDDEN = 4403;
+
 interface Props {
   /** The room's UUID — used as the Yjs room name and WebSocket path. */
   roomId: string;
@@ -39,6 +42,14 @@ interface Props {
  *
  * Rule 3 ensures that only the creator sees the option to claim, not every
  * guest or authenticated user who joins as a collaborator.
+ *
+ * ### Forbidden (4403) banner
+ * When the sync-server closes the WebSocket with code 4403, either because:
+ *   - The owner switched the room to PRIVATE and this user is not a member, or
+ *   - This user was removed from the room's member list,
+ * a dismissable alert is shown explaining why the connection was lost.
+ * Detection uses a custom DOM event `collab:connection-closed` dispatched by
+ * {@link useCollaborativeEditor} whenever the underlying WebSocket closes.
  */
 export function CollaborationLayout({ roomId, ticket, room }: Props) {
   const { viewModel, status, users, isSynced, reconnect } =
@@ -49,6 +60,13 @@ export function CollaborationLayout({ roomId, ticket, room }: Props) {
 
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isRoomClaimed, setIsRoomClaimed] = useState(room.isClaimed);
+
+  /**
+   * Reason string set when the sync-server closes the connection with 4403.
+   * Drives the "access denied" alert banner shown to the user.
+   * `null` means no 4403 has occurred this session.
+   */
+  const [accessDeniedReason, setAccessDeniedReason] = useState<string | null>(null);
 
   const setRoom = useEditorStore((state) => state.setRoom);
   const setEffectiveRole = useEditorStore((state) => state.setEffectiveRole);
@@ -61,13 +79,36 @@ export function CollaborationLayout({ roomId, ticket, room }: Props) {
     };
   }, [room, setRoom, setEffectiveRole]);
 
+  // Listen for close-code 4403 events dispatched by useCollaborativeEditor.
+  // The hook fires a `collab:connection-closed` CustomEvent on `window` whenever
+  // the native WebSocket closes, carrying { code, reason } in the detail payload.
+  // This avoids prop-drilling a close-code callback through the hook's public API.
+  useEffect(() => {
+    const handleCollabClosed = (e: Event) => {
+      const { code, reason } = (
+        e as CustomEvent<{ code: number; reason: string }>
+      ).detail;
+      if (code === WS_CLOSE_FORBIDDEN) {
+        const msg =
+          reason === "You have been removed from this room"
+            ? "You have been removed from this room by the owner."
+            : "This room is now private. Contact the owner to regain access.";
+        setAccessDeniedReason(msg);
+      }
+    };
+
+    window.addEventListener("collab:connection-closed", handleCollabClosed);
+    return () => {
+      window.removeEventListener("collab:connection-closed", handleCollabClosed);
+    };
+  }, []);
+
   // The claim banner is shown only to the browser that created the room.
   // localStorage is used so that if the user closes the tab or browser,
   // reopening the room will still show the claim banner.
   const isGuest = getTokenRole() === "GUEST";
   const creatorSecretKey = `${CREATOR_SECRET_KEY_PREFIX}${roomId}`;
-  const hasCreatorSecret =
-    localStorage.getItem(creatorSecretKey) !== null;
+  const hasCreatorSecret = localStorage.getItem(creatorSecretKey) !== null;
   const showClaimBanner = isGuest && !isRoomClaimed && hasCreatorSecret;
 
   async function handleClaimSuccess(memberToken: string) {
@@ -83,13 +124,42 @@ export function CollaborationLayout({ roomId, ticket, room }: Props) {
     // Set the new member token so apiGet uses it
     setToken(memberToken);
 
-    const ticketRes = await apiGet<{ ticket: string }>(`/api/rooms/by-slug/${room.slug}/ticket`);
+    const ticketRes = await apiGet<{ ticket: string }>(
+      `/api/rooms/by-slug/${room.slug}/ticket`,
+    );
     if (ticketRes.ok && ticketRes.data) {
       reconnect(ticketRes.data.ticket);
     }
 
     setIsRoomClaimed(true);
     setShowAuthModal(false);
+  }
+
+  // ── Forbidden (4403) state — show access-denied banner ───────────────────
+  if (accessDeniedReason) {
+    return (
+      <div className="flex flex-col h-full">
+        <UserPresenceBar users={[]} connectionStatus="disconnected" />
+        <div className="flex-1 flex items-center justify-center">
+          <Alert className="max-w-md border-destructive/60 bg-destructive/10">
+            <AlertDescription className="flex flex-col gap-3 text-destructive dark:text-red-400 font-mono text-sm">
+              <span>{accessDeniedReason}</span>
+              <Button
+                id="dismiss-access-denied-btn"
+                variant="outline"
+                size="sm"
+                className="self-start border-destructive/60 text-destructive hover:bg-destructive/10 dark:text-red-400"
+                onClick={() => {
+                  window.history.back();
+                }}
+              >
+                Go back
+              </Button>
+            </AlertDescription>
+          </Alert>
+        </div>
+      </div>
+    );
   }
 
   // Show a phase-appropriate loading message while the editor is not ready.
@@ -151,4 +221,3 @@ export function CollaborationLayout({ roomId, ticket, room }: Props) {
     </div>
   );
 }
-

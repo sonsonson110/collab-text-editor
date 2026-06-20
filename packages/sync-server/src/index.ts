@@ -25,6 +25,7 @@
  */
 
 import { WebSocketServer, WebSocket } from "ws";
+import * as http from "node:http";
 import * as Y from "yjs";
 import * as syncProtocol from "y-protocols/sync";
 import * as awarenessProtocol from "y-protocols/awareness";
@@ -34,6 +35,11 @@ import type { IncomingMessage } from "node:http";
 import { verifyRoomTicket, type TicketClaims } from "./auth/jwtVerifier.js";
 import { fetchSnapshot } from "./api/snapshotClient.js";
 import { startTracking, stopTracking } from "./snapshot/snapshotScheduler.js";
+import {
+  createInternalHttpHandler,
+  MSG_PERMISSION_CHANGED,
+  type RoomState,
+} from "./api/permissionHandler.js";
 
 const MSG_SYNC = 0;
 const MSG_AWARENESS = 1;
@@ -47,11 +53,19 @@ const MSG_AWARENESS = 1;
  */
 const MSG_SNAPSHOT_SAVED = 4;
 
+// MSG_PERMISSION_CHANGED = 5 is imported from permissionHandler.
+
 /**
  * Close code sent to clients whose JWT is missing or invalid.
  * 4401 is in the application-reserved range (4000–4999).
  */
 const WS_CLOSE_UNAUTHORIZED = 4401;
+
+/**
+ * Close code sent to clients who lose room access due to a permission change.
+ * 4403 is in the application-reserved range (4000–4999).
+ */
+const WS_CLOSE_FORBIDDEN = 4403;
 
 // ---------------------------------------------------------------------------
 // Per-connection identity store
@@ -77,10 +91,10 @@ const connectionAwarenessClients = new WeakMap<WebSocket, Set<number>>();
 // Room management
 // ---------------------------------------------------------------------------
 
-interface Room {
+interface Room extends RoomState {
   doc: Y.Doc;
   awareness: awarenessProtocol.Awareness;
-  connections: Set<WebSocket>;
+  // `connections: Set<WebSocket>` and `accessMode: string` inherited from RoomState.
 }
 
 const rooms = new Map<string, Room>();
@@ -100,7 +114,12 @@ async function getOrCreateRoom(name: string): Promise<Room> {
 
   const doc = new Y.Doc();
   const awareness = new awarenessProtocol.Awareness(doc);
-  const room: Room = { doc, awareness, connections: new Set() };
+  const room: Room = {
+    doc,
+    awareness,
+    connections: new Set(),
+    accessMode: "PUBLIC_EDIT", // default; updated by permission-change events
+  };
 
   // Hydrate from the api-server snapshot before accepting any connections.
   // If no snapshot exists (new room), the doc stays empty.
@@ -235,7 +254,27 @@ function handleConnection(
 
       if (msgType === MSG_SYNC) {
         const claims = connectionClaims.get(ws);
-        if (claims?.effectiveRole === "VIEWER") {
+
+        // Block document mutations for VIEWER connections.
+        //
+        // A connection is write-blocked if:
+        //   (a) Their ticket effectiveRole is "VIEWER" (set at connect time), OR
+        //   (b) The room's current accessMode is PUBLIC_VIEW and they have no explicit
+        //       member-level write role (i.e., they joined as a public EDITOR and the
+        //       owner just changed the mode to PUBLIC_VIEW).
+        //
+        // Case (b) ensures real-time enforcement: when the owner switches the room to
+        // PUBLIC_VIEW, existing editor connections are blocked immediately without a
+        // reconnect. The client receives MSG_PERMISSION_CHANGED and shows a read-only
+        // indicator, but the server-side block is the authoritative enforcement layer.
+        const isViewerByTicket = claims?.effectiveRole === "VIEWER";
+        const isViewerByRoomMode =
+          room.accessMode === "PUBLIC_VIEW" &&
+          claims?.effectiveRole !== "OWNER" &&
+          claims?.effectiveRole !== "EDITOR";
+        const isViewer = isViewerByTicket || isViewerByRoomMode;
+
+        if (isViewer) {
           // Peek the sync message sub-type to identify write operations.
           // y-protocols sync sub-types:
           //   0 = SyncStep1 (client sends its state vector — read-only, needed for handshake)
@@ -404,6 +443,11 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
   }
   connectionClaims.set(ws, claims);
 
+  // Buffer messages that arrive before the room is ready (async hydration window).
+  const pendingMessages: Buffer[] = [];
+  const bufferListener = (data: Buffer) => pendingMessages.push(data);
+  ws.on("message", bufferListener);
+
   // Room name comes from the URL path: ws://host:port/my-room → "my-room"
   const roomName =
     new URL(req.url ?? "/", `http://localhost:${PORT}`).pathname.replace(
@@ -412,8 +456,53 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     ) || "default";
 
   void getOrCreateRoom(roomName).then((room) => {
+    // Remove the temporary buffer listener before wiring the real one.
+    ws.off("message", bufferListener);
+
     handleConnection(ws, req, room);
+
+    // Replay any messages received during room hydration in order.
+    // Since handleConnection is fully synchronous from this point and
+    // registers the new ws.on('message') handler, these emissions
+    // will be caught by the correct handler.
+    for (const msg of pendingMessages) {
+      ws.emit("message", msg);
+    }
   });
 });
 
 console.log(`Collaboration server running on ws://localhost:${PORT}`);
+
+// ---------------------------------------------------------------------------
+// Internal HTTP server (PORT + 1) for api-server → sync-server notifications
+// ---------------------------------------------------------------------------
+
+const INTERNAL_HTTP_PORT = PORT + 1;
+
+/**
+ * Lightweight HTTP server that accepts internal permission-change notifications
+ * from the api-server on a separate port so it is never reachable by browsers.
+ *
+ * Authentication: validates the `x-internal-secret` header with the shared secret.
+ * The INTERNAL_API_SECRET value is guaranteed non-empty by the startup check in
+ * snapshotClient.ts (which throws before any connection is accepted if unset).
+ *
+ * Route: POST /internal/rooms/:roomId/permission-changed
+ * Body:  JSON PermissionEvent
+ *
+ * The handler looks up the in-memory room and broadcasts MSG_PERMISSION_CHANGED
+ * (or closes connections with 4403) to the affected WebSocket clients.
+ */
+const internalServer = http.createServer(
+  createInternalHttpHandler(
+    process.env.INTERNAL_API_SECRET ?? "",
+    rooms,
+    connectionClaims,
+  ),
+);
+
+internalServer.listen(INTERNAL_HTTP_PORT, () => {
+  console.log(
+    `Internal HTTP server running on http://localhost:${INTERNAL_HTTP_PORT}`,
+  );
+});

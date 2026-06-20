@@ -480,10 +480,50 @@ export function useCollaborativeEditor({
       isViewerSession,
     );
 
+    // Register a custom message handler for MSG_PERMISSION_CHANGED (type 5).
+    // The sync-server broadcasts this after a permission mutation on the api-server.
+    // onRewire re-wires awareness in-place so cursor broadcasting stops/starts
+    // without a reconnect (Option B: in-place update, server is the authority).
+    registerPermissionChangedHandler(
+      provider,
+      () => extractUserId(ticket),
+      (newIsViewer) => {
+        wireAwarenessUnsubRef.current?.();
+        wireAwarenessUnsubRef.current = wireAwareness(
+          provider,
+          ydoc,
+          ytext,
+          doc,
+          ticket,
+          newIsViewer,
+        );
+      },
+    );
+
     // Track connection status for the UI indicator.
     provider.on("status", ({ status: s }: { status: string }) => {
       setStatus(s as ConnectionStatus);
+
+      // Each time the provider establishes a new native WebSocket connection,
+      // attach a one-shot close listener so we can detect application-level close
+      // codes (e.g. 4403 Forbidden from the sync-server). We dispatch a custom DOM
+      // event so CollaborationLayout — which has no direct access to the provider —
+      // can show a user-friendly banner without prop drilling.
+      if (s === "connected") {
+        const nativeWs = (provider as unknown as { ws: WebSocket | null }).ws;
+        if (nativeWs) {
+          const onClose = (evt: CloseEvent) => {
+            window.dispatchEvent(
+              new CustomEvent("collab:connection-closed", {
+                detail: { code: evt.code, reason: evt.reason },
+              }),
+            );
+          };
+          nativeWs.addEventListener("close", onClose, { once: true });
+        }
+      }
     });
+
 
     return () => {
       storeUnsubscribe();
@@ -568,6 +608,23 @@ export function useCollaborativeEditor({
         isViewerReconnect,
       );
 
+      // Re-register the permission-changed handler on the new provider.
+      registerPermissionChangedHandler(
+        newProvider,
+        () => extractUserId(newTicket),
+        (newIsViewer) => {
+          wireAwarenessUnsubRef.current?.();
+          wireAwarenessUnsubRef.current = wireAwareness(
+            newProvider,
+            ydoc,
+            ytext,
+            doc,
+            newTicket,
+            newIsViewer,
+          );
+        },
+      );
+
       newProvider.on("status", ({ status: s }: { status: string }) => {
         setStatus(s as ConnectionStatus);
       });
@@ -607,6 +664,13 @@ function extractUserId(token: string): string | null {
 const MSG_SNAPSHOT_SAVED = 4;
 
 /**
+ * Custom message type matching the sync-server's `MSG_PERMISSION_CHANGED`.
+ *
+ * Index 5 follows MSG_SNAPSHOT_SAVED.
+ */
+const MSG_PERMISSION_CHANGED = 5;
+
+/**
  * Registers a custom message handler on the WebsocketProvider for
  * `MSG_SNAPSHOT_SAVED` messages broadcast by the sync-server.
  *
@@ -622,5 +686,113 @@ function registerSnapshotSavedHandler(provider: WebsocketProvider): void {
   ] = (_encoder: unknown, decoder: decoding.Decoder): void => {
     const timestamp = decoding.readFloat64(decoder);
     useEditorStore.getState().setLastSavedAt(timestamp);
+  };
+}
+
+/**
+ * Shape of the JSON payload embedded in a MSG_PERMISSION_CHANGED message.
+ */
+interface PermissionChangedEvent {
+  type: "access_mode_changed" | "member_role_changed" | "member_removed";
+  /** Present on access_mode_changed. */
+  accessMode?: string;
+  /** Present on member_role_changed — the new role for this user. */
+  newRole?: string;
+  /** Present on member_role_changed and member_removed — the affected user's UUID. */
+  userId?: string;
+}
+
+/**
+ * Derives the new effective role for the local user when an `access_mode_changed`
+ * event arrives, based on the new access mode and the user's current role.
+ *
+ * Rules:
+ * - OWNER and explicit EDITOR/VIEWER members keep their role regardless of access mode.
+ * - PUBLIC_EDIT: public (non-member) connections become EDITOR.
+ * - PUBLIC_VIEW: public (non-member) connections become VIEWER.
+ * - PRIVATE: public connections are disconnected server-side (4403); this function
+ *   is not called in that case because the connection is closed before the event lands.
+ */
+function deriveRoleFromAccessMode(
+  currentRole: string | null,
+  newAccessMode: string,
+): string {
+  // Explicit members keep their server-assigned role.
+  if (
+    currentRole === "OWNER" ||
+    currentRole === "EDITOR" ||
+    currentRole === "VIEWER"
+  ) {
+    // For public connections the current role reflects the previous access mode.
+    // We re-derive only for non-member (public) connections. We identify them by
+    // checking if the current role matches what the access mode implies.
+    // If they had OWNER role, they are always an explicit member — preserve it.
+    if (currentRole === "OWNER") return "OWNER";
+  }
+  return newAccessMode === "PUBLIC_EDIT" ? "EDITOR" : "VIEWER";
+}
+
+/**
+ * Registers a custom message handler on the WebsocketProvider for
+ * `MSG_PERMISSION_CHANGED` messages broadcast by the sync-server.
+ *
+ * On receiving the event the handler:
+ *   1. Updates `editorStore.effectiveRole` (gating EditorView keyboard/mouse handlers).
+ *   2. Updates `editorStore.room.accessMode` (refreshing RoomAccessIndicator).
+ *   3. If the viewer status changed, re-wires awareness (stops/starts cursor broadcasting).
+ *
+ * @param provider     The y-websocket provider instance.
+ * @param getLocalUserId Function that returns the current local user's UUID.
+ * @param getIsViewer  Getter for the current isViewer flag (mutated after re-wire).
+ * @param setIsViewer  Setter to update the mutable isViewer flag.
+ * @param onRewire     Callback to re-wire awareness with the new isViewer value.
+ */
+function registerPermissionChangedHandler(
+  provider: WebsocketProvider,
+  getLocalUserId: () => string | null,
+  onRewire: (isViewer: boolean) => void,
+): void {
+  (provider as unknown as { messageHandlers: unknown[] }).messageHandlers[
+    MSG_PERMISSION_CHANGED
+  ] = (_encoder: unknown, decoder: decoding.Decoder): void => {
+    const jsonStr = decoding.readVarString(decoder);
+    let event: PermissionChangedEvent;
+    try {
+      event = JSON.parse(jsonStr) as PermissionChangedEvent;
+    } catch {
+      return; // Malformed payload — ignore
+    }
+
+    const store = useEditorStore.getState();
+
+    if (event.type === "access_mode_changed" && event.accessMode) {
+      const newAccessMode = event.accessMode;
+      // Update the displayed access mode badge immediately.
+      store.updateRoomAccessMode(newAccessMode);
+
+      // Re-derive the effective role from the new access mode.
+      const currentRole = store.effectiveRole;
+      const newRole = deriveRoleFromAccessMode(currentRole, newAccessMode);
+      if (newRole !== currentRole) {
+        store.setEffectiveRole(newRole);
+        const newIsViewer = newRole === "VIEWER";
+        // Re-wire awareness so cursor broadcasting is stopped/started as appropriate.
+        onRewire(newIsViewer);
+      }
+    } else if (event.type === "member_role_changed" && event.newRole) {
+      // Only apply if this event targets the local user.
+      const localUserId = getLocalUserId();
+      if (event.userId && event.userId !== localUserId) return;
+
+      const newRole = event.newRole;
+      store.setEffectiveRole(newRole);
+      const newIsViewer = newRole === "VIEWER";
+      onRewire(newIsViewer);
+    } else if (event.type === "member_removed") {
+      // The server will close the WebSocket with 4403 — the status listener
+      // will update the connection indicator. The client shows a dismissable
+      // banner via the CollaborationLayout's 4403 close handler.
+      // Nothing to do here beyond letting the WS close naturally.
+    }
   };
 }
