@@ -1,17 +1,11 @@
 package com.collab.api.room;
 
-import com.collab.api.shared.config.InternalApiProperties;
-import com.collab.api.shared.config.SyncServerProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.util.UUID;
 
 /**
@@ -34,23 +28,25 @@ import java.util.UUID;
 @Service
 public class SyncServerNotifier {
 
+    /**
+     * The Redis channel name used to broadcast room permission change events to the sync-server.
+     */
+    public static final String REDIS_CHANNEL_ROOM_PERMISSIONS = "room-permissions";
+
+    /** Event type sent when a room's access mode changes. */
+    public static final String EVENT_ACCESS_MODE_CHANGED = "access_mode_changed";
+
+    /** Event type sent when a room member's role changes. */
+    public static final String EVENT_MEMBER_ROLE_CHANGED = "member_role_changed";
+
+    /** Event type sent when a room member is removed. */
+    public static final String EVENT_MEMBER_REMOVED = "member_removed";
+
     private static final Logger log = LoggerFactory.getLogger(SyncServerNotifier.class);
-    private static final String INTERNAL_SECRET_HEADER = "x-internal-secret";
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(5);
+    private final StringRedisTemplate redisTemplate;
 
-    private final HttpClient httpClient;
-    private final String syncServerBaseUrl;
-    private final String internalSecret;
-
-    public SyncServerNotifier(
-            SyncServerProperties syncServerProperties,
-            InternalApiProperties internalApiProperties
-    ) {
-        this.syncServerBaseUrl = syncServerProperties.baseUrl();
-        this.internalSecret = internalApiProperties.secret();
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(REQUEST_TIMEOUT)
-                .build();
+    public SyncServerNotifier(StringRedisTemplate redisTemplate) {
+        this.redisTemplate = redisTemplate;
     }
 
     /**
@@ -66,9 +62,9 @@ public class SyncServerNotifier {
     @Async
     public void notifyAccessModeChanged(UUID roomId, String newAccessMode) {
         String body = """
-                {"type":"access_mode_changed","accessMode":"%s"}
-                """.formatted(newAccessMode).strip();
-        postInternal(roomId, body, "access_mode_changed");
+                {"type":"%s","roomId":"%s","accessMode":"%s"}
+                """.formatted(EVENT_ACCESS_MODE_CHANGED, roomId, newAccessMode).strip();
+        postInternal(roomId, body, EVENT_ACCESS_MODE_CHANGED);
     }
 
     /**
@@ -85,9 +81,9 @@ public class SyncServerNotifier {
     @Async
     public void notifyMemberRoleChanged(UUID roomId, UUID targetUserId, String newRole) {
         String body = """
-                {"type":"member_role_changed","userId":"%s","newRole":"%s"}
-                """.formatted(targetUserId, newRole).strip();
-        postInternal(roomId, body, "member_role_changed");
+                {"type":"%s","roomId":"%s","userId":"%s","newRole":"%s"}
+                """.formatted(EVENT_MEMBER_ROLE_CHANGED, roomId, targetUserId, newRole).strip();
+        postInternal(roomId, body, EVENT_MEMBER_ROLE_CHANGED);
     }
 
     /**
@@ -104,9 +100,9 @@ public class SyncServerNotifier {
     @Async
     public void notifyMemberRemoved(UUID roomId, UUID targetUserId) {
         String body = """
-                {"type":"member_removed","userId":"%s"}
-                """.formatted(targetUserId).strip();
-        postInternal(roomId, body, "member_removed");
+                {"type":"%s","roomId":"%s","userId":"%s"}
+                """.formatted(EVENT_MEMBER_REMOVED, roomId, targetUserId).strip();
+        postInternal(roomId, body, EVENT_MEMBER_REMOVED);
     }
 
     // -------------------------------------------------------------------------
@@ -121,26 +117,10 @@ public class SyncServerNotifier {
      * error — the permission is already persisted in the DB.
      */
     private void postInternal(UUID roomId, String jsonBody, String eventType) {
-        String url = "%s/internal/rooms/%s/permission-changed".formatted(syncServerBaseUrl, roomId);
         try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .header("Content-Type", "application/json")
-                    .header(INTERNAL_SECRET_HEADER, internalSecret)
-                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                    .timeout(REQUEST_TIMEOUT)
-                    .build();
-
-            HttpResponse<Void> response = httpClient.send(request, HttpResponse.BodyHandlers.discarding());
-
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                log.warn("[SyncServerNotifier] {} notification for room {} returned HTTP {}",
-                        eventType, roomId, response.statusCode());
-            } else {
-                log.debug("[SyncServerNotifier] {} notified for room {}", eventType, roomId);
-            }
+            redisTemplate.convertAndSend(REDIS_CHANNEL_ROOM_PERMISSIONS, jsonBody);
+            log.debug("[SyncServerNotifier] {} notified for room {}", eventType, roomId);
         } catch (Exception e) {
-            // Non-fatal: sync-server may be down or room not loaded. Change is already in DB.
             log.warn("[SyncServerNotifier] Failed to notify sync-server of {} for room {}: {}",
                     eventType, roomId, e.getMessage());
         }

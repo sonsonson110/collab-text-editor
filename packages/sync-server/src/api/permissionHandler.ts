@@ -17,9 +17,9 @@
  *   0 = Sync, 1 = Awareness, 2 = Auth, 3 = QueryAwareness, 4 = SnapshotSaved.
  */
 
-import type { IncomingMessage, ServerResponse } from "node:http";
-import { WebSocket } from "ws";
+import Redis from "ioredis";
 import * as encoding from "lib0/encoding";
+import { WebSocket } from "ws";
 
 /** Custom message type for real-time permission events. */
 export const MSG_PERMISSION_CHANGED = 5;
@@ -27,8 +27,24 @@ export const MSG_PERMISSION_CHANGED = 5;
 /** WebSocket close code sent to clients who lose room access. */
 export const WS_CLOSE_FORBIDDEN = 4403;
 
+/** Redis channel name used for room permission change events. */
+export const REDIS_CHANNEL_ROOM_PERMISSIONS = "room-permissions";
+
+/** Event type sent when a room's access mode changes. */
+export const EVENT_ACCESS_MODE_CHANGED = "access_mode_changed";
+
+/** Event type sent when a room member's role changes. */
+export const EVENT_MEMBER_ROLE_CHANGED = "member_role_changed";
+
+/** Event type sent when a room member is removed. */
+export const EVENT_MEMBER_REMOVED = "member_removed";
+
 export interface PermissionEvent {
-  type: "access_mode_changed" | "member_role_changed" | "member_removed";
+  type:
+    | typeof EVENT_ACCESS_MODE_CHANGED
+    | typeof EVENT_MEMBER_ROLE_CHANGED
+    | typeof EVENT_MEMBER_REMOVED;
+  roomId: string;
   /** Present for access_mode_changed. */
   accessMode?: string;
   /** Present for member_role_changed and member_removed — the affected user's UUID. */
@@ -83,7 +99,7 @@ export function handlePermissionEvent(
   event: PermissionEvent,
   connectionClaims: ConnectionClaimsMap,
 ): void {
-  if (event.type === "access_mode_changed" && event.accessMode) {
+  if (event.type === EVENT_ACCESS_MODE_CHANGED && event.accessMode) {
     // Update in-memory room state so future message handling uses the new mode.
     room.accessMode = event.accessMode;
 
@@ -115,7 +131,11 @@ export function handlePermissionEvent(
         sendPermissionChanged(ws, event);
       }
     });
-  } else if (event.type === "member_role_changed" && event.userId && event.newRole) {
+  } else if (
+    event.type === EVENT_MEMBER_ROLE_CHANGED &&
+    event.userId &&
+    event.newRole
+  ) {
     // Targeted: find connections belonging to the affected user and notify them.
     room.connections.forEach((ws) => {
       const claims = connectionClaims.get(ws);
@@ -123,7 +143,7 @@ export function handlePermissionEvent(
         sendPermissionChanged(ws, event);
       }
     });
-  } else if (event.type === "member_removed" && event.userId) {
+  } else if (event.type === EVENT_MEMBER_REMOVED && event.userId) {
     // Targeted: close the removed user's connection with 4403.
     room.connections.forEach((ws) => {
       const claims = connectionClaims.get(ws);
@@ -135,69 +155,63 @@ export function handlePermissionEvent(
 }
 
 /**
- * Creates an HTTP request handler for the internal permission-changed endpoint.
+ * Creates a Redis subscriber for the internal permission-changed events.
  *
- * Expected route: POST /internal/rooms/:roomId/permission-changed
+ * Expected channel: room-permissions
+ * Expected message: JSON PermissionEvent
  *
- * @param internalSecret   The shared secret to validate against `x-internal-secret`.
+ * @param redisUrl         The Redis connection URL.
  * @param rooms            The sync-server's in-memory room map.
  * @param connectionClaims WeakMap of WebSocket → JWT claims.
+ * @returns The initialized Redis subscriber client.
  */
-export function createInternalHttpHandler(
-  internalSecret: string,
+export function createRedisSubscriber(
+  redisUrl: string,
   rooms: Map<string, RoomState>,
   connectionClaims: ConnectionClaimsMap,
-): (req: IncomingMessage, res: ServerResponse) => void {
-  return (req, res) => {
-    // ── Auth ─────────────────────────────────────────────────────────────────
-    const providedSecret = req.headers["x-internal-secret"];
-    if (providedSecret !== internalSecret) {
-      res.writeHead(401, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Unauthorized" }));
+): Redis {
+  const subscriber = new Redis(redisUrl);
+
+  subscriber.on("message", (channel, message) => {
+    if (channel !== REDIS_CHANNEL_ROOM_PERMISSIONS) return;
+
+    let event: PermissionEvent;
+    try {
+      event = JSON.parse(message) as PermissionEvent;
+    } catch (err) {
+      console.error(
+        `[RedisSubscriber] Invalid JSON message on ${REDIS_CHANNEL_ROOM_PERMISSIONS}:`,
+        err,
+      );
       return;
     }
 
-    // ── Route matching ────────────────────────────────────────────────────────
-    const match = /^\/internal\/rooms\/([^/]+)\/permission-changed$/.exec(
-      req.url ?? "",
-    );
-    if (!match || req.method !== "POST") {
-      res.writeHead(404, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Not found" }));
+    if (!event.roomId) {
+      console.warn("[RedisSubscriber] Missing roomId in event");
       return;
     }
 
-    const roomId = match[1]!;
+    const room = rooms.get(event.roomId);
+    if (!room) {
+      // Room not loaded in memory — nothing to do.
+      return;
+    }
 
-    // ── Body parsing ─────────────────────────────────────────────────────────
-    let body = "";
-    req.on("data", (chunk: Buffer) => {
-      body += chunk.toString();
-    });
+    handlePermissionEvent(room, event, connectionClaims);
+  });
 
-    req.on("end", () => {
-      let event: PermissionEvent;
-      try {
-        event = JSON.parse(body) as PermissionEvent;
-      } catch {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Invalid JSON body" }));
-        return;
-      }
+  subscriber.subscribe(REDIS_CHANNEL_ROOM_PERMISSIONS, (err) => {
+    if (err) {
+      console.error(
+        `[RedisSubscriber] Failed to subscribe to ${REDIS_CHANNEL_ROOM_PERMISSIONS}:`,
+        err,
+      );
+    } else {
+      console.log(
+        `[RedisSubscriber] Subscribed to ${REDIS_CHANNEL_ROOM_PERMISSIONS} channel`,
+      );
+    }
+  });
 
-      const room = rooms.get(roomId);
-      if (!room) {
-        // Room not loaded in memory (no active connections) — nothing to do.
-        // The DB change is already committed; the next connection will see it.
-        res.writeHead(204);
-        res.end();
-        return;
-      }
-
-      handlePermissionEvent(room, event, connectionClaims);
-
-      res.writeHead(204);
-      res.end();
-    });
-  };
+  return subscriber;
 }

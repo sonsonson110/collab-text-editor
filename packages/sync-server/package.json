@@ -10,6 +10,7 @@
     "test:run": "vitest run"
   },
   "dependencies": {
+    "ioredis": "^5.11.1",
     "jsonwebtoken": "^9.0.3",
     "lib0": "^0.2.117",
     "ws": "^8.18.3",

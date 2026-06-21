@@ -36,7 +36,7 @@ import { verifyRoomTicket, type TicketClaims } from "./auth/jwtVerifier.js";
 import { fetchSnapshot } from "./api/snapshotClient.js";
 import { startTracking, stopTracking } from "./snapshot/snapshotScheduler.js";
 import {
-  createInternalHttpHandler,
+  createRedisSubscriber,
   MSG_PERMISSION_CHANGED,
   type RoomState,
 } from "./api/permissionHandler.js";
@@ -474,35 +474,8 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
 console.log(`Collaboration server running on ws://localhost:${PORT}`);
 
 // ---------------------------------------------------------------------------
-// Internal HTTP server (PORT + 1) for api-server → sync-server notifications
+// Redis Subscriber for api-server → sync-server permission notifications
 // ---------------------------------------------------------------------------
 
-const INTERNAL_HTTP_PORT = PORT + 1;
-
-/**
- * Lightweight HTTP server that accepts internal permission-change notifications
- * from the api-server on a separate port so it is never reachable by browsers.
- *
- * Authentication: validates the `x-internal-secret` header with the shared secret.
- * The INTERNAL_API_SECRET value is guaranteed non-empty by the startup check in
- * snapshotClient.ts (which throws before any connection is accepted if unset).
- *
- * Route: POST /internal/rooms/:roomId/permission-changed
- * Body:  JSON PermissionEvent
- *
- * The handler looks up the in-memory room and broadcasts MSG_PERMISSION_CHANGED
- * (or closes connections with 4403) to the affected WebSocket clients.
- */
-const internalServer = http.createServer(
-  createInternalHttpHandler(
-    process.env.INTERNAL_API_SECRET ?? "",
-    rooms,
-    connectionClaims,
-  ),
-);
-
-internalServer.listen(INTERNAL_HTTP_PORT, () => {
-  console.log(
-    `Internal HTTP server running on http://localhost:${INTERNAL_HTTP_PORT}`,
-  );
-});
+const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
+createRedisSubscriber(redisUrl, rooms, connectionClaims);
