@@ -466,6 +466,9 @@ export function useCollaborativeEditor({
           useEditorStore.getState().setEffectiveRole(payload.effectiveRole);
           isViewerSession = payload.effectiveRole === "VIEWER";
         }
+        if (typeof payload.isMember === "boolean") {
+          useEditorStore.getState().setIsMember(payload.isMember);
+        }
       }
     } catch {
       // Ignore malformed tickets
@@ -591,6 +594,9 @@ export function useCollaborativeEditor({
             useEditorStore.getState().setEffectiveRole(payload.effectiveRole);
             isViewerReconnect = payload.effectiveRole === "VIEWER";
           }
+          if (typeof payload.isMember === "boolean") {
+            useEditorStore.getState().setIsMember(payload.isMember);
+          }
         }
       } catch {
         // Ignore malformed tokens
@@ -695,7 +701,7 @@ function registerSnapshotSavedHandler(provider: WebsocketProvider): void {
 interface PermissionChangedEvent {
   type: "access_mode_changed" | "member_role_changed" | "member_removed";
   /** Present on access_mode_changed. */
-  accessMode?: string;
+  accessMode?: "PUBLIC_EDIT" | "PUBLIC_VIEW" | "PRIVATE";
   /** Present on member_role_changed — the new role for this user. */
   newRole?: string;
   /** Present on member_role_changed and member_removed — the affected user's UUID. */
@@ -716,19 +722,11 @@ interface PermissionChangedEvent {
 function deriveRoleFromAccessMode(
   currentRole: string | null,
   newAccessMode: string,
+  isMember: boolean,
 ): string {
-  // Explicit members keep their server-assigned role.
-  if (
-    currentRole === "OWNER" ||
-    currentRole === "EDITOR" ||
-    currentRole === "VIEWER"
-  ) {
-    // For public connections the current role reflects the previous access mode.
-    // We re-derive only for non-member (public) connections. We identify them by
-    // checking if the current role matches what the access mode implies.
-    // If they had OWNER role, they are always an explicit member — preserve it.
-    if (currentRole === "OWNER") return "OWNER";
-  }
+  // Explicit DB members keep their server-assigned role regardless of access mode.
+  if (isMember) return currentRole ?? "VIEWER";
+  // Public-access connections re-derive from the new access mode.
   return newAccessMode === "PUBLIC_EDIT" ? "EDITOR" : "VIEWER";
 }
 
@@ -772,7 +770,11 @@ function registerPermissionChangedHandler(
 
       // Re-derive the effective role from the new access mode.
       const currentRole = store.effectiveRole;
-      const newRole = deriveRoleFromAccessMode(currentRole, newAccessMode);
+      const newRole = deriveRoleFromAccessMode(
+        currentRole,
+        newAccessMode,
+        store.isMember,
+      );
       if (newRole !== currentRole) {
         store.setEffectiveRole(newRole);
         const newIsViewer = newRole === "VIEWER";
@@ -786,13 +788,30 @@ function registerPermissionChangedHandler(
 
       const newRole = event.newRole;
       store.setEffectiveRole(newRole);
+      store.setIsMember(true);
       const newIsViewer = newRole === "VIEWER";
       onRewire(newIsViewer);
     } else if (event.type === "member_removed") {
-      // The server will close the WebSocket with 4403 — the status listener
-      // will update the connection indicator. The client shows a dismissable
-      // banner via the CollaborationLayout's 4403 close handler.
-      // Nothing to do here beyond letting the WS close naturally.
+      const localUserId = getLocalUserId();
+      if (event.userId && event.userId !== localUserId) return;
+
+      // The room is public. The server downgraded us to public guest status.
+      // (If the room were PRIVATE, the server would have closed the connection with 4403
+      // and this event handler wouldn't have been processed on the client.)
+      store.setIsMember(false);
+      const currentAccessMode = store.room?.accessMode;
+      if (currentAccessMode) {
+        const newRole = deriveRoleFromAccessMode(
+          store.effectiveRole,
+          currentAccessMode,
+          false, // no longer a member
+        );
+        if (newRole !== store.effectiveRole) {
+          store.setEffectiveRole(newRole);
+          const newIsViewer = newRole === "VIEWER";
+          onRewire(newIsViewer);
+        }
+      }
     }
   };
 }

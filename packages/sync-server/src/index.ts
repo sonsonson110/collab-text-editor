@@ -25,7 +25,6 @@
  */
 
 import { WebSocketServer, WebSocket } from "ws";
-import * as http from "node:http";
 import * as Y from "yjs";
 import * as syncProtocol from "y-protocols/sync";
 import * as awarenessProtocol from "y-protocols/awareness";
@@ -40,6 +39,13 @@ import {
   MSG_PERMISSION_CHANGED,
   type RoomState,
 } from "./api/permissionHandler.js";
+import {
+  redisSubscriber,
+  setupSyncPubSub,
+  publishSyncUpdate,
+  publishAwarenessUpdate,
+  type SyncRoomState,
+} from "./redis.js";
 
 const MSG_SYNC = 0;
 const MSG_AWARENESS = 1;
@@ -139,8 +145,13 @@ async function getOrCreateRoom(name: string): Promise<Room> {
    * Broadcast every document update to all clients in the room except the one
    * that originated the change.  The `origin` is set to the sender's WebSocket
    * via the `transactionOrigin` parameter of readSyncMessage() below.
+   *
+   * For cross-node sync, updates received from Redis have origin = "redis".
+   * These are applied locally and broadcast to local clients but must NOT be
+   * re-published to Redis to avoid infinite echo loops.
    */
-  doc.on("update", (update: Uint8Array, origin: WebSocket | null) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  doc.on("update", (update: Uint8Array, origin: any) => {
     const msg = encoding.createEncoder();
     encoding.writeVarUint(msg, MSG_SYNC);
     syncProtocol.writeUpdate(msg, update);
@@ -151,11 +162,19 @@ async function getOrCreateRoom(name: string): Promise<Room> {
         conn.send(encoded);
       }
     });
+
+    // Fan-out to peer nodes via Redis — skip if the update already came from Redis.
+    if (origin !== "redis") {
+      publishSyncUpdate(name, update);
+    }
   });
 
   /**
    * Broadcast awareness changes (cursor positions, user metadata) to all
    * clients except the originator.
+   *
+   * Like doc updates, awareness updates from Redis (origin = "redis") are
+   * applied locally and forwarded to local clients, but not re-published.
    */
   awareness.on(
     "update",
@@ -165,15 +184,15 @@ async function getOrCreateRoom(name: string): Promise<Room> {
         updated,
         removed,
       }: { added: number[]; updated: number[]; removed: number[] },
-      origin: WebSocket | null,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      origin: any,
     ) => {
       const changed = [...added, ...updated, ...removed];
+      const updateBuf = awarenessProtocol.encodeAwarenessUpdate(awareness, changed);
+
       const msg = encoding.createEncoder();
       encoding.writeVarUint(msg, MSG_AWARENESS);
-      encoding.writeVarUint8Array(
-        msg,
-        awarenessProtocol.encodeAwarenessUpdate(awareness, changed),
-      );
+      encoding.writeVarUint8Array(msg, updateBuf);
       const encoded = encoding.toUint8Array(msg);
 
       room.connections.forEach((conn) => {
@@ -181,6 +200,11 @@ async function getOrCreateRoom(name: string): Promise<Room> {
           conn.send(encoded);
         }
       });
+
+      // Fan-out to peer nodes via Redis — skip if update already came from Redis.
+      if (origin !== "redis") {
+        publishAwarenessUpdate(name, updateBuf);
+      }
     },
   );
 
@@ -256,23 +280,9 @@ function handleConnection(
         const claims = connectionClaims.get(ws);
 
         // Block document mutations for VIEWER connections.
-        //
-        // A connection is write-blocked if:
-        //   (a) Their ticket effectiveRole is "VIEWER" (set at connect time), OR
-        //   (b) The room's current accessMode is PUBLIC_VIEW and they have no explicit
-        //       member-level write role (i.e., they joined as a public EDITOR and the
-        //       owner just changed the mode to PUBLIC_VIEW).
-        //
-        // Case (b) ensures real-time enforcement: when the owner switches the room to
-        // PUBLIC_VIEW, existing editor connections are blocked immediately without a
-        // reconnect. The client receives MSG_PERMISSION_CHANGED and shows a read-only
-        // indicator, but the server-side block is the authoritative enforcement layer.
-        const isViewerByTicket = claims?.effectiveRole === "VIEWER";
-        const isViewerByRoomMode =
-          room.accessMode === "PUBLIC_VIEW" &&
-          claims?.effectiveRole !== "OWNER" &&
-          claims?.effectiveRole !== "EDITOR";
-        const isViewer = isViewerByTicket || isViewerByRoomMode;
+        // Since connectionClaims is kept authoritative by the permission handler,
+        // we can simply check the current effectiveRole.
+        const isViewer = claims?.effectiveRole === "VIEWER";
 
         if (isViewer) {
           // Peek the sync message sub-type to identify write operations.
@@ -474,8 +484,12 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
 console.log(`Collaboration server running on ws://localhost:${PORT}`);
 
 // ---------------------------------------------------------------------------
-// Redis Subscriber for api-server → sync-server permission notifications
+// Redis: permission subscriber + cross-node sync fan-out
 // ---------------------------------------------------------------------------
 
-const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
-createRedisSubscriber(redisUrl, rooms, connectionClaims);
+// Wire the shared subscriber for the room-permissions channel.
+createRedisSubscriber(redisSubscriber, rooms, connectionClaims);
+
+// Subscribe to room:sync:* for cross-node Y.Doc / Awareness fan-out.
+// Room is a structural subtype of SyncRoomState so the cast is safe.
+setupSyncPubSub(rooms as Map<string, SyncRoomState>);

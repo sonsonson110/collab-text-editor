@@ -105,6 +105,15 @@ export function handlePermissionEvent(
 
     room.connections.forEach((ws) => {
       const claims = connectionClaims.get(ws);
+      if (!claims) return;
+
+      // Explicit members keep their existing role.
+      // Public-access guests re-derive from the new access mode.
+      if (!claims.isMember) {
+        const updatedRole =
+          event.accessMode === "PUBLIC_EDIT" ? "EDITOR" : "VIEWER";
+        connectionClaims.set(ws, { ...claims, effectiveRole: updatedRole });
+      }
 
       if (event.accessMode === "PRIVATE") {
         // PRIVATE mode: explicit DB members (isMember === true) keep their connection.
@@ -116,7 +125,7 @@ export function handlePermissionEvent(
         //
         // This avoids any api-server round-trip on the hot path while correctly
         // preserving the OWNER's and all explicit members' sessions.
-        if (claims?.isMember) {
+        if (claims.isMember) {
           // Explicit member — stay connected. Notify so the client updates the
           // access-mode badge in the UI (e.g. RoomAccessIndicator turns to 🔒).
           sendPermissionChanged(ws, event);
@@ -139,39 +148,61 @@ export function handlePermissionEvent(
     // Targeted: find connections belonging to the affected user and notify them.
     room.connections.forEach((ws) => {
       const claims = connectionClaims.get(ws);
-      if (claims?.userId === event.userId) {
+      if (claims && claims.userId === event.userId) {
+        // Update BOTH effectiveRole and isMember.
+        // If they're receiving a role change, they are a DB member now.
+        connectionClaims.set(ws, {
+          ...claims,
+          effectiveRole: event.newRole!,
+          isMember: true,
+        });
         sendPermissionChanged(ws, event);
       }
     });
   } else if (event.type === EVENT_MEMBER_REMOVED && event.userId) {
-    // Targeted: close the removed user's connection with 4403.
     room.connections.forEach((ws) => {
       const claims = connectionClaims.get(ws);
-      if (claims?.userId === event.userId && ws.readyState === WebSocket.OPEN) {
-        ws.close(WS_CLOSE_FORBIDDEN, "You have been removed from this room");
+      if (claims && claims.userId === event.userId) {
+        if (room.accessMode === "PRIVATE") {
+          // PRIVATE: no public fallback exists — hard-kick.
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.close(WS_CLOSE_FORBIDDEN, "You have been removed from this room");
+          }
+        } else {
+          // PUBLIC_EDIT or PUBLIC_VIEW: downgrade to public guest level.
+          const guestRole =
+            room.accessMode === "PUBLIC_EDIT" ? "EDITOR" : "VIEWER";
+          connectionClaims.set(ws, {
+            ...claims,
+            effectiveRole: guestRole,
+            isMember: false,
+          });
+          sendPermissionChanged(ws, event);
+        }
       }
     });
   }
 }
 
 /**
- * Creates a Redis subscriber for the internal permission-changed events.
+ * Wires permission-changed handling onto the provided Redis subscriber client.
  *
- * Expected channel: room-permissions
- * Expected message: JSON PermissionEvent
+ * Instead of creating its own connection, this function accepts a pre-existing
+ * `Redis` subscriber instance (e.g., the shared `redisSubscriber` from `redis.ts`),
+ * which eliminates the need for an additional Redis connection solely for this channel.
  *
- * @param redisUrl         The Redis connection URL.
+ * Expected channel: {@link REDIS_CHANNEL_ROOM_PERMISSIONS}
+ * Expected message: JSON-encoded {@link PermissionEvent}
+ *
+ * @param subscriber       An ioredis client already in (or to be put into) subscribe mode.
  * @param rooms            The sync-server's in-memory room map.
  * @param connectionClaims WeakMap of WebSocket → JWT claims.
- * @returns The initialized Redis subscriber client.
  */
 export function createRedisSubscriber(
-  redisUrl: string,
+  subscriber: Redis,
   rooms: Map<string, RoomState>,
   connectionClaims: ConnectionClaimsMap,
-): Redis {
-  const subscriber = new Redis(redisUrl);
-
+): void {
   subscriber.on("message", (channel, message) => {
     if (channel !== REDIS_CHANNEL_ROOM_PERMISSIONS) return;
 
@@ -212,6 +243,4 @@ export function createRedisSubscriber(
       );
     }
   });
-
-  return subscriber;
 }
