@@ -12,16 +12,22 @@
  *   1 — Awareness (remote cursor / presence state)
  *
  * Authentication (Phase 2):
- *   Clients must supply a signed JWT in the `?token=<jwt>` query parameter of
+ *   Clients must supply a signed JWT in the `?ticket=<jwt>` query parameter of
  *   the WebSocket upgrade URL.  The token is verified locally (no Spring call)
- *   via {@link verifyToken}.  Invalid or missing tokens cause the upgrade to be
- *   rejected with WebSocket close code 4401 before the connection is opened.
+ *   via {@link verifyRoomTicket}.  Invalid or missing tickets cause the upgrade
+ *   to be rejected with WebSocket close code 4401 before the connection is opened.
  *
- * Snapshot persistence (Phase 3):
- *   When a room is created, the latest binary Yjs snapshot is fetched from the
- *   api-server and applied to the Y.Doc before accepting connections.
- *   Document changes trigger debounced + max-wait saves back to the api-server.
- *   A final save is performed when the last client disconnects.
+ * Snapshot persistence (Phase 3 — Incremental):
+ *   - On room creation, the latest binary Yjs snapshot is fetched from Redis
+ *     (Phase 2 cache) or the api-server (PostgreSQL fallback) and applied to
+ *     the Y.Doc before accepting connections.
+ *   - Every document delta is buffered in memory and flushed to a Redis Stream
+ *     (`room:updates:<roomId>`) every 1 second via {@link deltaScheduler}.
+ *   - A background compaction worker merges stream deltas into a full PostgreSQL
+ *     snapshot every 30 seconds and on final room teardown.
+ *   - A distributed presence counter (`room:connections:<roomId>`) tracks the
+ *     global number of live WebSocket connections across all nodes, enabling
+ *     accurate last-client detection without relying on local connection set size.
  */
 
 import { WebSocketServer, WebSocket } from "ws";
@@ -33,7 +39,7 @@ import * as decoding from "lib0/decoding";
 import type { IncomingMessage } from "node:http";
 import { verifyRoomTicket, type TicketClaims } from "./auth/jwtVerifier.js";
 import { fetchSnapshot } from "./api/snapshotClient.js";
-import { startTracking, stopTracking } from "./snapshot/snapshotScheduler.js";
+import { startTracking, stopTracking } from "./snapshot/deltaScheduler.js";
 import {
   createRedisSubscriber,
   MSG_PERMISSION_CHANGED,
@@ -44,8 +50,16 @@ import {
   setupSyncPubSub,
   publishSyncUpdate,
   publishAwarenessUpdate,
+  incrementPresence,
+  decrementPresence,
   type SyncRoomState,
 } from "./redis.js";
+import { startHeartbeat, stopHeartbeat } from "./snapshot/presenceCounter.js";
+import {
+  startCompactionWorker,
+  triggerImmediateCompaction,
+  type CompactionRoomState,
+} from "./snapshot/compactionWorker.js";
 
 const MSG_SYNC = 0;
 const MSG_AWARENESS = 1;
@@ -108,9 +122,10 @@ const rooms = new Map<string, Room>();
 /**
  * Returns the existing room for `name`, or creates and hydrates a new one.
  *
- * On creation, the latest snapshot is fetched from the api-server and applied
- * to the Y.Doc so document state survives sync-server restarts.
- * The snapshot scheduler is also started to persist future changes.
+ * On creation, the latest snapshot is fetched from Redis cache / api-server
+ * and applied to the Y.Doc so document state survives sync-server restarts.
+ * The delta scheduler is started to push incremental updates to the Redis
+ * Stream for later compaction.
  */
 async function getOrCreateRoom(name: string): Promise<Room> {
   const existing = rooms.get(name);
@@ -208,9 +223,11 @@ async function getOrCreateRoom(name: string): Promise<Room> {
     },
   );
 
-  // Start debounced snapshot persistence for this room.
-  // The onSaved callback broadcasts the save timestamp to all connected
-  // clients via a custom MSG_SNAPSHOT_SAVED message.
+  // Start incremental delta persistence for this room (Phase 3).
+  // Raw Yjs deltas are buffered in memory and flushed to the Redis Stream
+  // every 1 second. The compaction worker calls the onSaved callback after
+  // each successful PostgreSQL compaction, which broadcasts MSG_SNAPSHOT_SAVED
+  // so the client UI shows an accurate "Last saved" timestamp.
   startTracking(name, doc, (_roomId, timestamp) => {
     const msg = encoding.createEncoder();
     encoding.writeVarUint(msg, MSG_SNAPSHOT_SAVED);
@@ -236,8 +253,18 @@ function handleConnection(
   ws: WebSocket,
   req: IncomingMessage,
   room: Room,
+  roomName: string,
 ): void {
   room.connections.add(ws);
+
+  // Increment the distributed global connection counter for this room.
+  // This counter spans all sync-server nodes and enables accurate last-client
+  // detection at teardown without relying on the local `room.connections` size.
+  void incrementPresence(roomName);
+
+  // Ensure the per-room, per-node heartbeat is running so the compaction worker
+  // can detect crashes via key expiry if this node dies unexpectedly.
+  startHeartbeat(roomName);
 
   // Identity (userId, role) is published by each client in its own awareness
   // state — the server must not set these on its shared awareness entry because
@@ -356,12 +383,6 @@ function handleConnection(
   });
 
   // ── Cleanup on disconnect ─────────────────────────────────────────────────
-  const roomName =
-    new URL(req.url ?? "/", `http://localhost:${PORT}`).pathname.replace(
-      /^\//,
-      "",
-    ) || "default";
-
   ws.on("close", () => {
     room.connections.delete(ws);
 
@@ -378,13 +399,31 @@ function handleConnection(
       );
     }
 
-    // When the last client leaves, persist a final snapshot and tear down the room.
-    if (room.connections.size === 0) {
-      void stopTracking(roomName, room.doc).then(() => {
-        room.awareness.destroy();
-        rooms.delete(roomName);
-      });
-    }
+    // Decrement the global distributed presence counter.
+    // We use the counter (not room.connections.size) to determine whether this
+    // node is hosting the very last connection globally across all nodes.
+    void decrementPresence(roomName).then((globalCount) => {
+      if (globalCount === 0) {
+        // This was the last connection globally — perform a full teardown.
+        // Stop the heartbeat first so the key is cleaned up immediately.
+        stopHeartbeat(roomName);
+
+        // Flush remaining buffered deltas and trigger immediate compaction
+        // to produce a final durable snapshot before the room is evicted.
+        void stopTracking(roomName, room.doc)
+          .then(() => triggerImmediateCompaction(roomName))
+          .then(() => {
+            room.awareness.destroy();
+            rooms.delete(roomName);
+          });
+      } else if (room.connections.size === 0) {
+        // This node has no more local connections, but other nodes still do.
+        // Stop the local heartbeat but do NOT tear down the in-memory room —
+        // it may receive cross-node sync updates from other nodes' clients.
+        // The room will be evicted when those nodes' connections also close.
+        stopHeartbeat(roomName);
+      }
+    });
   });
 
   ws.on("error", (err) => {
@@ -397,6 +436,11 @@ function handleConnection(
 // ---------------------------------------------------------------------------
 
 const PORT = parseInt(process.env.PORT ?? "1234", 10);
+
+// ---------------------------------------------------------------------------
+// handleConnection needs roomName — extract it once in the connection handler
+// (previously extracted inside handleConnection; now passed as a parameter).
+// ---------------------------------------------------------------------------
 
 const wss = new WebSocketServer({
   port: PORT,
@@ -469,7 +513,9 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     // Remove the temporary buffer listener before wiring the real one.
     ws.off("message", bufferListener);
 
-    handleConnection(ws, req, room);
+    // Pass roomName explicitly so handleConnection can use it for the
+    // distributed presence counter and heartbeat without re-parsing the URL.
+    handleConnection(ws, req, room, roomName);
 
     // Replay any messages received during room hydration in order.
     // Since handleConnection is fully synchronous from this point and
@@ -484,7 +530,7 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
 console.log(`Collaboration server running on ws://localhost:${PORT}`);
 
 // ---------------------------------------------------------------------------
-// Redis: permission subscriber + cross-node sync fan-out
+// Redis: permission subscriber + cross-node sync fan-out + compaction worker
 // ---------------------------------------------------------------------------
 
 // Wire the shared subscriber for the room-permissions channel.
@@ -493,3 +539,9 @@ createRedisSubscriber(redisSubscriber, rooms, connectionClaims);
 // Subscribe to room:sync:* for cross-node Y.Doc / Awareness fan-out.
 // Room is a structural subtype of SyncRoomState so the cast is safe.
 setupSyncPubSub(rooms as Map<string, SyncRoomState>);
+
+// Start the background compaction worker (Phase 3).
+// Runs every 30 seconds across all active rooms, merging delta streams into
+// durable PostgreSQL snapshots. Room is a structural subtype of
+// CompactionRoomState (it has a `connections` Set).
+startCompactionWorker(rooms as Map<string, CompactionRoomState>);

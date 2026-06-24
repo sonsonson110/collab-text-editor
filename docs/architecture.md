@@ -32,7 +32,7 @@
 │  • Manages per-room Y.Doc instances                                 │
 │  • Room Ticket JWT auth at WebSocket upgrade (verifyClient)         │
 │  • Broadcasts sync & awareness messages between peers               │
-│  • Snapshot persistence (debounced saves to api-server)             │
+│  • Incremental delta persistence (Redis Stream → compaction worker) │
 │  • Real-time permission fan-out (MSG_PERMISSION_CHANGED)            │
 │  • Write-blocking for VIEWER role on every incoming Update msg      │
 └─────────────────────┬───────────────────────────────────────────────┘
@@ -206,9 +206,11 @@ Each `WebSocket` is keyed in `connectionClaims: WeakMap<WebSocket, TicketClaims>
 | Module | Responsibility |
 |--------|---------------|
 | `auth/jwtVerifier` | Verifies HMAC-SHA JWT using the shared `JWT_SECRET` (base64-encoded, same key as api-server). Exports `verifyToken` (general JWT) and `verifyRoomTicket` (room-scoped ticket with `roomId` + `effectiveRole` + `isMember` claims). |
-| `api/snapshotClient` | HTTP client for `GET/PUT /api/internal/rooms/:id/snapshot`. Attaches `x-internal-secret` header. |
-| `api/permissionHandler` | Internal HTTP endpoint handler. Parses `PermissionEvent` JSON, fans out `MSG_PERMISSION_CHANGED` binary messages, closes `4403` connections. Exports `handlePermissionEvent` and `createInternalHttpHandler`. |
-| `snapshot/snapshotScheduler` | Debounce + max-wait timer per room. `startTracking` / `stopTracking`. |
+| `api/snapshotClient` | HTTP client for `GET/PUT /api/internal/rooms/:id/snapshot`. Attaches `x-internal-secret` header. Also manages Redis snapshot cache write-through on `saveSnapshot`. |
+| `api/permissionHandler` | Redis Pub/Sub subscriber for the `room-permissions` channel. Parses `PermissionEvent` JSON, fans out `MSG_PERMISSION_CHANGED` binary messages, closes `4403` connections. Exports `handlePermissionEvent` and `createRedisSubscriber`. |
+| `snapshot/deltaScheduler` | Buffers raw Yjs deltas in memory per room. Flushes buffered deltas to the Redis Stream (`room:updates:<roomId>`) every 1 second via XADD. Exposes `getOnSaved` for the compaction worker to invoke the MSG_SNAPSHOT_SAVED broadcast callback. |
+| `snapshot/compactionWorker` | Background worker running every 30 s. Reads delta stream via XRANGE, applies deltas to the last PostgreSQL snapshot in a fresh Y.Doc, persists the merged snapshot via `saveSnapshot`, and trims the stream. Also handles immediate compaction on room teardown. |
+| `snapshot/presenceCounter` | Per-room, per-node Redis heartbeat (`room:heartbeat:<roomId>:<nodeId>`, TTL=60 s, refreshed every 15 s). Enables the compaction worker to detect crashed nodes via key expiry as a complement to the distributed presence counter (`room:connections:<roomId>`). |
 
 ---
 
@@ -361,20 +363,56 @@ sequenceDiagram
 sequenceDiagram
     participant Clients as Clients (all)
     participant sync as sync-server
-    participant sched as snapshotScheduler
+    participant delta as deltaScheduler
+    participant Redis as Redis Stream
+    participant compact as compactionWorker
     participant api as api-server
 
     Clients->>sync: MSG_SYNC Update (edit)
-    sync->>sched: recordChange(roomId)
-    Note over sched: debounce: 5 s after last change<br/>ceiling: 60 s from first dirty change
+    sync->>delta: doc.on("update") — buffer raw delta
+    Note over delta: In-memory buffer (no I/O)
 
-    sched->>api: PUT /api/internal/rooms/:id/snapshot
-    Note over api: stores binary Y.Doc state<br/>in PostgreSQL
-    api-->>sched: 204 No Content
+    loop Every 1 second
+        delta->>Redis: XADD room:updates:<roomId> * data <base64>
+        Note over Redis: Append-only delta log
+    end
 
-    sched->>sync: onSaved callback (timestamp)
-    sync->>Clients: MSG_SNAPSHOT_SAVED (type 4, Float64 epoch ms)
-    Note over Clients: editorStore.setLastSavedAt(ts)<br/>BottomBar "Last saved" updates
+    loop Every 30 seconds (compactionWorker)
+        compact->>Redis: XRANGE room:updates:<roomId> - +
+        Redis-->>compact: [delta1, delta2, ...]
+        compact->>api: GET /api/internal/rooms/:id/snapshot (base)
+        api-->>compact: binary Yjs state (or 204)
+        Note over compact: Y.applyUpdate(doc, base)<br/>Y.applyUpdate(doc, delta) × N<br/>Y.encodeStateAsUpdate(doc)
+        compact->>api: PUT /api/internal/rooms/:id/snapshot
+        Note over api: stores compacted binary<br/>in PostgreSQL
+        api-->>compact: 200 OK
+        compact->>Redis: XTRIM room:updates:<roomId> MAXLEN 0
+        compact->>sync: onSaved(roomId, timestamp)
+        sync->>Clients: MSG_SNAPSHOT_SAVED (type 4, Float64 epoch ms)
+        Note over Clients: editorStore.setLastSavedAt(ts)<br/>BottomBar "Last saved" updates
+    end
+```
+
+On the **last client disconnect** (global presence counter reaches 0):
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant sync as sync-server
+    participant delta as deltaScheduler
+    participant compact as compactionWorker
+    participant api as api-server
+
+    Client->>sync: WS close
+    Note over sync: room.connections.delete(ws)<br/>awareness clientIDs removed
+    sync->>Redis: DECR room:connections:<roomId>
+    Redis-->>sync: 0 (globally empty)
+    sync->>delta: stopTracking(roomId) — flush remaining deltas
+    delta->>Redis: XADD (any remaining buffered deltas)
+    sync->>compact: triggerImmediateCompaction(roomId)
+    compact->>api: GET snapshot + PUT compacted snapshot
+    compact->>Redis: XTRIM + DEL room:connections:<roomId>
+    Note over sync: awareness.destroy()<br/>rooms.delete(roomId)
 ```
 
 ---

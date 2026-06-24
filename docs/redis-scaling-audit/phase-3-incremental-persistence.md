@@ -1,5 +1,8 @@
 # Phase 3: Incremental Update Persistence
 
+> **Status: ✅ Implemented**
+> See `packages/sync-server/src/snapshot/` for `deltaScheduler.ts`, `compactionWorker.ts`, and `presenceCounter.ts`.
+
 ## Overview
 Currently, the `sync-server` runs a `snapshotScheduler` that debounces saves. When a save triggers, the entire `Y.Doc` is serialized into a binary state update and sent to the `api-server` via HTTP PUT, overwriting the row in PostgreSQL.
 As the document grows, sending and writing the full binary blob becomes expensive and scales poorly with high edit frequencies.
