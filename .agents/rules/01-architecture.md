@@ -48,6 +48,8 @@ This project is a distributed, collaborative text editor utilizing a split backe
 
 ### C. Sync Server (`packages/sync-server`) — Stateful Real-time Processing
 
+- **Event-Driven Architecture:** The sync server is built on a modular, event-driven architecture using an internal `EventBus` (`infra/eventBus`). Modules must remain loosely coupled and communicate exclusively by emitting and listening to strongly typed events (e.g., `CLIENT_CONNECTED`) rather than direct method calls between domains.
+
 - **Operational Boundaries:** This server is solely responsible for low-latency operational sync (Yjs CRDT updates) and active presence awareness.
 
 - **Decoupled Persistence:** It must offload persistence workloads asynchronously (via standard scheduled tasks or event loops) to the `api-server` to keep the main event loop non-blocking.
