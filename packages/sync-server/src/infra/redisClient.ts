@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import Redis from "ioredis";
-import { logger } from "./logger.js";
+import { logger } from "./logger";
 
 export const REDIS_CHANNEL_ROOM_SYNC_PREFIX = "room:sync:";
 export const REDIS_KEY_ROOM_STATE_PREFIX = "room:state:";

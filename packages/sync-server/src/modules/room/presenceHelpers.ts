@@ -1,8 +1,8 @@
 import {
   redis,
   REDIS_KEY_ROOM_CONNECTIONS_PREFIX,
-} from "../../infra/redisClient.js";
-import { logger } from "../../infra/logger.js";
+} from "../../infra";
+import { logger } from "../../infra";
 
 export async function incrementPresence(roomId: string): Promise<void> {
   const key = `${REDIS_KEY_ROOM_CONNECTIONS_PREFIX}${roomId}`;

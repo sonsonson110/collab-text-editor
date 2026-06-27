@@ -2,8 +2,8 @@ import * as Y from "yjs";
 import * as syncProtocol from "y-protocols/sync";
 import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
-import { TypedEventEmitter } from "../../infra/eventBus.js";
-import { MSG_SYNC } from "../../types/protocol.js";
+import { TypedEventEmitter } from "../../infra";
+import { MSG_SYNC } from "../../types";
 
 interface YjsState {
   doc: Y.Doc;

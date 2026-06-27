@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
-import type { EventMap } from "../types/events.js";
-import { logger } from "./logger.js";
+import type { EventMap } from "../types";
+import { logger } from "./logger";
 
 export class TypedEventEmitter {
   private emitter = new EventEmitter();

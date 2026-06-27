@@ -1,13 +1,13 @@
-import { TypedEventEmitter } from "../../infra/eventBus.js";
-import type { PermissionEvent } from "../../types/events.js";
+import { TypedEventEmitter } from "../../infra";
+import type { PermissionEvent } from "../../types";
 import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import {
   MSG_PERMISSION_CHANGED,
   WS_CLOSE_FORBIDDEN,
-} from "../../types/protocol.js";
-import type { TicketClaims } from "../../auth/jwtVerifier.js";
-import { getRoomState } from "../room/roomManager.js";
+} from "../../types";
+import type { TicketClaims } from "../../auth";
+import { getRoomState } from "../room";
 import { WebSocket } from "ws";
 
 const connectionClaims = new WeakMap<WebSocket, TicketClaims>();

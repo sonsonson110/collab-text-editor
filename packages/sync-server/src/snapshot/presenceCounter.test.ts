@@ -26,8 +26,8 @@ vi.mock("../infra/redisClient.js", () => ({
 }));
 
 // Import AFTER the mock is registered.
-import { redis } from "../infra/redisClient.js";
-import { startHeartbeat, stopHeartbeat } from "./presenceCounter.js";
+import { redis } from "../infra";
+import { startHeartbeat, stopHeartbeat } from "./presenceCounter";
 
 // Typed mock references for assertion convenience.
 const mockSet = vi.mocked(redis.set);

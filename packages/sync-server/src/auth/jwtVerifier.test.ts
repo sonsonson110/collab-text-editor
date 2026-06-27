@@ -15,7 +15,7 @@ describe("jwtVerifier", () => {
    * is already set when the module-level guard runs.
    */
   async function loadVerifier() {
-    const mod = await import("./jwtVerifier.js");
+    const mod = await import("./jwtVerifier");
     return mod.verifyToken;
   }
 

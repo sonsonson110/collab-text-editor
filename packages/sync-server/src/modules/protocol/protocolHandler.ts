@@ -1,7 +1,7 @@
 import * as decoding from "lib0/decoding";
-import { TypedEventEmitter } from "../../infra/eventBus.js";
-import { MSG_SYNC, MSG_AWARENESS } from "../../types/protocol.js";
-import { logger } from "../../infra/logger.js";
+import { TypedEventEmitter } from "../../infra";
+import { MSG_SYNC, MSG_AWARENESS } from "../../types";
+import { logger } from "../../infra";
 
 export function createProtocolHandler(bus: TypedEventEmitter): void {
   bus.on("WS_MESSAGE_RECEIVED", ({ roomId, connectionId, ws, message }) => {

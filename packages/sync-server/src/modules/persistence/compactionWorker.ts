@@ -1,11 +1,11 @@
 import * as Y from "yjs";
-import { readDeltasFromStream, trimStream } from "./streamHelpers.js";
-import { fetchSnapshot } from "./snapshotHydrator.js";
-import { saveSnapshot } from "./snapshotPersister.js";
-import { deletePresenceKey } from "../room/presenceHelpers.js";
-import { TypedEventEmitter } from "../../infra/eventBus.js";
-import { logger } from "../../infra/logger.js";
-import { getRoomState } from "../room/roomManager.js";
+import { readDeltasFromStream, trimStream } from "./streamHelpers";
+import { fetchSnapshot } from "./snapshotHydrator";
+import { saveSnapshot } from "./snapshotPersister";
+import { deletePresenceKey } from "../room";
+import { TypedEventEmitter } from "../../infra";
+import { logger } from "../../infra";
+import { getRoomState } from "../room";
 
 const COMPACTION_INTERVAL_MS = 30_000;
 

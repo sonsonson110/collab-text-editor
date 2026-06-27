@@ -1,12 +1,12 @@
-import { TypedEventEmitter } from "./eventBus.js";
+import { TypedEventEmitter } from "./eventBus";
 import {
   redis,
   redisSubscriber,
   REDIS_CHANNEL_ROOM_SYNC_PREFIX,
   NODE_ID,
-} from "./redisClient.js";
-import { logger } from "./logger.js";
-import type { PermissionEvent } from "../types/events.js";
+} from "./redisClient";
+import { logger } from "./logger";
+import type { PermissionEvent } from "../types";
 
 export const REDIS_CHANNEL_ROOM_PERMISSIONS = "room-permissions";
 

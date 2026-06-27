@@ -1,5 +1,5 @@
 import { WebSocket } from "ws";
-import type { TicketClaims } from "../auth/jwtVerifier.js";
+import type { TicketClaims } from "../auth";
 
 export interface PermissionEvent {
   type: "access_mode_changed" | "member_role_changed" | "member_removed";

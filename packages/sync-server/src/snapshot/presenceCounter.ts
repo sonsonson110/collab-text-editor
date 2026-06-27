@@ -27,7 +27,7 @@ import {
   redis,
   NODE_ID,
   REDIS_KEY_ROOM_HEARTBEAT_PREFIX,
-} from "../infra/redisClient.js";
+} from "../infra";
 
 /** How often (ms) the heartbeat key is refreshed while a room is active. */
 const HEARTBEAT_INTERVAL_MS = 15_000;

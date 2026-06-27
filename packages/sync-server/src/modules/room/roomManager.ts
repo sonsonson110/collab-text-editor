@@ -1,11 +1,11 @@
-import { TypedEventEmitter } from "../../infra/eventBus.js";
-import type { Room } from "./types.js";
-import { incrementPresence, decrementPresence } from "./presenceHelpers.js";
+import { TypedEventEmitter } from "../../infra";
+import type { Room } from "./types";
+import { incrementPresence, decrementPresence } from "./presenceHelpers";
 import {
   startHeartbeat,
   stopHeartbeat,
-} from "../../snapshot/presenceCounter.js";
-import { logger } from "../../infra/logger.js";
+} from "../../snapshot";
+import { logger } from "../../infra";
 import { WebSocket } from "ws";
 
 const rooms = new Map<string, Room>();

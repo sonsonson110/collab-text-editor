@@ -1,6 +1,6 @@
-import { appendDeltaToStream } from "./streamHelpers.js";
-import { TypedEventEmitter } from "../../infra/eventBus.js";
-import { MSG_SNAPSHOT_SAVED } from "../../types/protocol.js";
+import { appendDeltaToStream } from "./streamHelpers";
+import { TypedEventEmitter } from "../../infra";
+import { MSG_SNAPSHOT_SAVED } from "../../types";
 
 const FLUSH_INTERVAL_MS = 1_000;
 

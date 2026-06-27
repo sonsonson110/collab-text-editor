@@ -2,8 +2,8 @@ import * as awarenessProtocol from "y-protocols/awareness";
 import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import * as Y from "yjs";
-import { TypedEventEmitter } from "../../infra/eventBus.js";
-import { MSG_AWARENESS } from "../../types/protocol.js";
+import { TypedEventEmitter } from "../../infra";
+import { MSG_AWARENESS } from "../../types";
 
 interface PresenceState {
   awareness: awarenessProtocol.Awareness;

@@ -1,5 +1,5 @@
-import { redis, REDIS_KEY_ROOM_STATE_PREFIX } from "../../infra/redisClient.js";
-import { logger } from "../../infra/logger.js";
+import { redis, REDIS_KEY_ROOM_STATE_PREFIX } from "../../infra";
+import { logger } from "../../infra";
 
 const API_BASE_URL = process.env.API_BASE_URL ?? "http://localhost:8081";
 const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;

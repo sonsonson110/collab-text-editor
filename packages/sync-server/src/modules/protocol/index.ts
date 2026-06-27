@@ -1,0 +1,3 @@
+export {
+  createProtocolHandler
+} from './protocolHandler';

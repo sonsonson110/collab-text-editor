@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as Y from "yjs";
 import { WebSocket } from "ws";
-import { createEventBus } from "../../infra/eventBus.js";
-import { createDeltaScheduler } from "./deltaScheduler.js";
+import { createEventBus } from "../../infra";
+import { createDeltaScheduler } from "./deltaScheduler";
 
 vi.mock("./streamHelpers.js", () => ({
   appendDeltaToStream: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { appendDeltaToStream } from "./streamHelpers.js";
+import { appendDeltaToStream } from "./streamHelpers";
 
 const mockAppend = appendDeltaToStream as ReturnType<typeof vi.fn>;
 

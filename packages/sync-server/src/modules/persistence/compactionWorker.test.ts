@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as Y from "yjs";
-import { createEventBus } from "../../infra/eventBus.js";
+import { createEventBus } from "../../infra";
 
 vi.mock("./streamHelpers.js", () => ({
   readDeltasFromStream: vi.fn(),
@@ -19,11 +19,11 @@ vi.mock("./snapshotPersister.js", () => ({
   saveSnapshot: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { readDeltasFromStream, trimStream } from "./streamHelpers.js";
-import { deletePresenceKey } from "../room/presenceHelpers.js";
-import { fetchSnapshot } from "./snapshotHydrator.js";
-import { saveSnapshot } from "./snapshotPersister.js";
-import { compactRoom, triggerImmediateCompaction } from "./compactionWorker.js";
+import { readDeltasFromStream, trimStream } from "./streamHelpers";
+import { deletePresenceKey } from "../room";
+import { fetchSnapshot } from "./snapshotHydrator";
+import { saveSnapshot } from "./snapshotPersister";
+import { compactRoom, triggerImmediateCompaction } from "./compactionWorker";
 
 const mockReadDeltas = vi.mocked(readDeltasFromStream);
 const mockTrimStream = vi.mocked(trimStream);

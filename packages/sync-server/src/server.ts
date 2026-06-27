@@ -1,16 +1,16 @@
-import { createEventBus } from "./infra/eventBus.js";
-import { createConnectionManager } from "./ws/connectionManager.js";
-import { createWss } from "./ws/wss.js";
-import { createProtocolHandler } from "./modules/protocol/protocolHandler.js";
-import { createYjsService } from "./modules/crdt/yjsService.js";
-import { createPresenceService } from "./modules/presence/presenceService.js";
-import { createPermissionService } from "./modules/permission/permissionService.js";
-import { createRoomManager } from "./modules/room/roomManager.js";
-import { createSnapshotHydrator } from "./modules/persistence/snapshotHydrator.js";
-import { createDeltaScheduler } from "./modules/persistence/deltaScheduler.js";
-import { createCompactionWorker } from "./modules/persistence/compactionWorker.js";
-import { createRedisEventBridge } from "./infra/redisEventBridge.js";
-import { logger } from "./infra/logger.js";
+import { createEventBus } from "./infra";
+import { createConnectionManager } from "./ws";
+import { createWss } from "./ws";
+import { createProtocolHandler } from "./modules/protocol";
+import { createYjsService } from "./modules/crdt";
+import { createPresenceService } from "./modules/presence";
+import { createPermissionService } from "./modules/permission";
+import { createRoomManager } from "./modules/room";
+import { createSnapshotHydrator } from "./modules/persistence";
+import { createDeltaScheduler } from "./modules/persistence";
+import { createCompactionWorker } from "./modules/persistence";
+import { createRedisEventBridge } from "./infra";
+import { logger } from "./infra";
 
 const PORT = parseInt(process.env.PORT ?? "1234", 10);
 

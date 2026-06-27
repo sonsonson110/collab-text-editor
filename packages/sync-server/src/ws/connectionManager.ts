@@ -1,10 +1,10 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "node:http";
-import { TypedEventEmitter } from "../infra/eventBus.js";
-import type { TicketClaims } from "../auth/jwtVerifier.js";
-import { WS_CLOSE_UNAUTHORIZED } from "../types/protocol.js";
+import { TypedEventEmitter } from "../infra";
+import type { TicketClaims } from "../auth";
+import { WS_CLOSE_UNAUTHORIZED } from "../types";
 import { randomUUID } from "node:crypto";
-import { logger } from "../infra/logger.js";
+import { logger } from "../infra";
 
 const PORT = parseInt(process.env.PORT ?? "1234", 10);
 

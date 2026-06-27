@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { createYjsService } from "./yjsService.js";
-import { createEventBus, TypedEventEmitter } from "../../infra/eventBus.js";
-import { MSG_SYNC } from "../../types/protocol.js";
+import { createYjsService } from "./yjsService";
+import { createEventBus, TypedEventEmitter } from "../../infra";
+import { MSG_SYNC } from "../../types";
 import * as Y from "yjs";
 import * as syncProtocol from "y-protocols/sync";
 import * as encoding from "lib0/encoding";
