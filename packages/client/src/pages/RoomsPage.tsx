@@ -22,6 +22,9 @@ type PageState =
     }
   | { phase: "error"; message: string };
 
+/** localStorage key prefix used to store the per-room creator secret. */
+const CREATOR_SECRET_KEY_PREFIX = "creator:";
+
 export function RoomsPage() {
   const [state, setState] = useState<PageState>({ phase: "loading" });
   const [isCreating, setIsCreating] = useState(false);
@@ -104,7 +107,14 @@ export function RoomsPage() {
     try {
       const response = await apiPost<QuickshareResponse>("/api/rooms/quickshare");
       if (response.ok && response.data) {
-        navigate(`/room/${response.data.slug}`);
+        const { id, slug, creatorSecret } = response.data;
+        if (creatorSecret !== null) {
+          localStorage.setItem(
+            `${CREATOR_SECRET_KEY_PREFIX}${id}`,
+            creatorSecret
+          );
+        }
+        navigate(`/room/${slug}`);
       } else {
         console.error("Failed to create room", response.status);
         setIsCreating(false);
