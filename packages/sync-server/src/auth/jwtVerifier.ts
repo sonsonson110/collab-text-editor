@@ -64,7 +64,10 @@ export interface TicketClaims {
   isMember: boolean;
 }
 
-export function verifyRoomTicket(token: string, expectedRoomId: string): TicketClaims {
+export function verifyRoomTicket(
+  token: string,
+  expectedRoomId: string,
+): TicketClaims {
   const payload = jwt.verify(token, SECRET_KEY, {
     algorithms: ["HS256", "HS384", "HS512"],
   }) as {

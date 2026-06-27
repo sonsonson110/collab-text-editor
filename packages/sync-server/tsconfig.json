@@ -6,7 +6,8 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src", "vitest.setup.ts", "vitest.config.ts"]
 }

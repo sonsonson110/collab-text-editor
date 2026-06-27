@@ -16,7 +16,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // Mock redis.ts BEFORE importing presenceCounter.
 // vi.mock is hoisted — factory must be self-contained (no outer variables).
 // ---------------------------------------------------------------------------
-vi.mock("../redis.js", () => ({
+vi.mock("../infra/redisClient.js", () => ({
   redis: {
     set: vi.fn().mockResolvedValue("OK"),
     del: vi.fn().mockResolvedValue(1),
@@ -26,7 +26,7 @@ vi.mock("../redis.js", () => ({
 }));
 
 // Import AFTER the mock is registered.
-import { redis } from "../redis.js";
+import { redis } from "../infra/redisClient.js";
 import { startHeartbeat, stopHeartbeat } from "./presenceCounter.js";
 
 // Typed mock references for assertion convenience.

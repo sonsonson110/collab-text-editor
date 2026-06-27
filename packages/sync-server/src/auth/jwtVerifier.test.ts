@@ -21,10 +21,14 @@ describe("jwtVerifier", () => {
 
   it("verifies an HS256 token", async () => {
     const verifyToken = await loadVerifier();
-    const token = jwt.sign({ sub: "user-1", role: "AUTHENTICATED" }, secretBytes, {
-      algorithm: "HS256",
-      expiresIn: "1h",
-    });
+    const token = jwt.sign(
+      { sub: "user-1", role: "AUTHENTICATED" },
+      secretBytes,
+      {
+        algorithm: "HS256",
+        expiresIn: "1h",
+      },
+    );
     const claims = verifyToken(token);
     expect(claims.userId).toBe("user-1");
     expect(claims.role).toBe("AUTHENTICATED");
@@ -43,10 +47,14 @@ describe("jwtVerifier", () => {
 
   it("verifies an HS512 token", async () => {
     const verifyToken = await loadVerifier();
-    const token = jwt.sign({ sub: "user-2", role: "AUTHENTICATED" }, secretBytes, {
-      algorithm: "HS512",
-      expiresIn: "1h",
-    });
+    const token = jwt.sign(
+      { sub: "user-2", role: "AUTHENTICATED" },
+      secretBytes,
+      {
+        algorithm: "HS512",
+        expiresIn: "1h",
+      },
+    );
     const claims = verifyToken(token);
     expect(claims.userId).toBe("user-2");
     expect(claims.role).toBe("AUTHENTICATED");
