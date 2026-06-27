@@ -63,7 +63,15 @@ export function createYjsService(bus: TypedEventEmitter): void {
     const state = docs.get(roomId);
     if (!state) return;
 
+    if (origin === "redis") {
+      Y.applyUpdate(state.doc, message, "redis");
+      return;
+    }
+
     const decoder = decoding.createDecoder(message);
+    // Discard the MSG_SYNC prefix byte because the WebSocket message is prefixed with it.
+    decoding.readVarUint(decoder);
+    
     const replyEncoder = encoding.createEncoder();
     encoding.writeVarUint(replyEncoder, MSG_SYNC);
 

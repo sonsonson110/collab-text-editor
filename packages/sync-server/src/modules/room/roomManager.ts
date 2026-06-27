@@ -34,6 +34,11 @@ export function createRoomManager(bus: TypedEventEmitter): void {
     if (isNewRoom) {
       // Hydrator listens to ROOM_CREATED, and it will emit HYDRATE_DOC and then ROOM_READY
       // We don't block CLIENT_CONNECTED processing on ROOM_READY here, connectionManager handles early buffering.
+    } else {
+      // Room already exists and is fully hydrated — emit ROOM_READY immediately so the
+      // connectionManager unblocks the new client's message queue and yjsService /
+      // presenceService can push the initial sync-step-1 and awareness snapshot.
+      bus.emit("ROOM_READY", { roomId });
     }
   });
 
