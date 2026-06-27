@@ -16,9 +16,9 @@ describe("yjsService", () => {
     createYjsService(bus);
   });
 
-  it("initializes yjs doc on ROOM_READY and sends SyncStep1 on CLIENT_CONNECTED", () => {
+  it("initializes yjs doc on ROOM_CREATED and sends SyncStep1 on CLIENT_CONNECTED", () => {
     const roomId = "room-1";
-    bus.emit("ROOM_READY", { roomId });
+    bus.emit("ROOM_CREATED", { roomId });
 
     const ws = {
       readyState: 1,
@@ -54,7 +54,7 @@ describe("yjsService", () => {
 
   it("successfully processes client SyncStep2 messages via PERMITTED_SYNC_MESSAGE", () => {
     const roomId = "room-2";
-    bus.emit("ROOM_READY", { roomId });
+    bus.emit("ROOM_CREATED", { roomId });
 
     const ws = {
       readyState: 1,
@@ -83,7 +83,7 @@ describe("yjsService", () => {
 
   it("applies raw updates directly when origin is redis", () => {
     const roomId = "room-3";
-    bus.emit("ROOM_READY", { roomId });
+    bus.emit("ROOM_CREATED", { roomId });
 
     // Generate a raw Yjs update
     const sourceDoc = new Y.Doc();

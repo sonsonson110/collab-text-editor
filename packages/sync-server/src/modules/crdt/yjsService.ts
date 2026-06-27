@@ -13,7 +13,7 @@ interface YjsState {
 const docs = new Map<string, YjsState>();
 
 export function createYjsService(bus: TypedEventEmitter): void {
-  bus.on("ROOM_READY", ({ roomId }) => {
+  bus.on("ROOM_CREATED", ({ roomId }) => {
     if (docs.has(roomId)) return;
 
     const doc = new Y.Doc();
