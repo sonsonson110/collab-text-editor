@@ -29,14 +29,15 @@
                       │ WebSocket (Yjs sync + awareness)
 ┌─────────────────────▼───────────────────────────────────────────────┐
 │                     sync-server (Node.js)                           │
+│  • Modular EventBus architecture                                    │
 │  • Manages per-room Y.Doc instances                                 │
 │  • Room Ticket JWT auth at WebSocket upgrade (verifyClient)         │
 │  • Broadcasts sync & awareness messages between peers               │
-│  • Incremental delta persistence (Redis Stream → compaction worker) │
-│  • Real-time permission fan-out (MSG_PERMISSION_CHANGED)            │
+│  • Incremental delta persistence (Redis Streams)                    │
+│  • Real-time permission fan-out (Redis Pub/Sub)                     │
 │  • Write-blocking for VIEWER role on every incoming Update msg      │
 └─────────────────────┬───────────────────────────────────────────────┘
-                      │ HTTP (x-internal-secret)
+                      │ HTTP (snapshots) / Redis (events & deltas)
 ┌─────────────────────▼───────────────────────────────────────────────┐
 │                     api-server (Spring Boot)                        │
 │  • Auth (register / login / guest tokens)                           │
@@ -44,7 +45,7 @@
 │  • Room Ticket issuance (GET /api/rooms/by-slug/:slug/ticket)       │
 │  • Permission management (access mode, member CRUD)                 │
 │  • Snapshot persistence (binary Yjs state in PostgreSQL)            │
-│  • Async sync-server notification (SyncServerNotifier)              │
+│  • Async permission events (Redis Pub/Sub)                          │
 │  • Scheduled cleanup of stale rooms                                 │
 └─────────────────────┬───────────────────────────────────────────────┘
                       │
@@ -171,10 +172,10 @@ Global client-side state shared between the editor hook and bottom-bar UI compon
 
 ## Sync Server
 
-Split into two listeners:
+Built on a modular, event-driven architecture using an internal `EventBus`.
 
-- **WebSocket server** (`ws.WebSocketServer`) on `PORT` (default `1234`) — Yjs sync + awareness.
-- **Internal HTTP server** (`http.createServer`) on `PORT + 1` (default `1235`) — api-server → sync-server permission notifications.
+- **WebSocket Server**: Built with `ws` on `PORT` (default `1234`) for Yjs sync and awareness.
+- **Redis Event Bridge**: Connects to Redis to listen for `api-server` permission notifications via Pub/Sub and handle distributed state.
 
 ### Key Behaviours
 
@@ -184,7 +185,7 @@ Split into two listeners:
 4. **Snapshot persistence** — `snapshotScheduler` debounces saves (5 s after last change, ceiling at 60 s). On successful save, broadcasts a save timestamp (`MSG_SNAPSHOT_SAVED`) to all connected clients. Final save on room teardown.
 5. **VIEWER write-blocking** — the message handler inspects `claims.effectiveRole` on every `MSG_SYNC` message. Sub-type `2` (Update) from a VIEWER is silently dropped (connection stays open). Sub-types `0` and `1` (SyncStep1/2 handshake) are always allowed through so the handshake completes.
 6. **Awareness passthrough for VIEWERs** — awareness updates from VIEWERs are forwarded to peers so they appear in the presence bar. The client-side hook guarantees VIEWERs only publish identity fields (`user`, `userId`, `lastActive`, `role: "VIEWER"`) and never publish cursor positions.
-7. **Real-time permission reactivity** — the internal HTTP server accepts `POST /internal/rooms/:id/permission-changed` events from the api-server. See [Permission Changed flow](#permission-changed).
+7. **Real-time permission reactivity** — the `redisEventBridge` subscribes to the `room-permissions` Redis Pub/Sub channel to receive events from the api-server. See [Permission Changed flow](#permission-changed).
 
 ### Room State
 
@@ -203,14 +204,17 @@ Each `WebSocket` is keyed in `connectionClaims: WeakMap<WebSocket, TicketClaims>
 
 ### Internal Modules
 
+Organized under `src/infra`, `src/ws`, and `src/modules/` and decoupled via `EventBus`:
+
 | Module | Responsibility |
 |--------|---------------|
-| `auth/jwtVerifier` | Verifies HMAC-SHA JWT using the shared `JWT_SECRET` (base64-encoded, same key as api-server). Exports `verifyToken` (general JWT) and `verifyRoomTicket` (room-scoped ticket with `roomId` + `effectiveRole` + `isMember` claims). |
-| `api/snapshotClient` | HTTP client for `GET/PUT /api/internal/rooms/:id/snapshot`. Attaches `x-internal-secret` header. Also manages Redis snapshot cache write-through on `saveSnapshot`. |
-| `api/permissionHandler` | Redis Pub/Sub subscriber for the `room-permissions` channel. Parses `PermissionEvent` JSON, fans out `MSG_PERMISSION_CHANGED` binary messages, closes `4403` connections. Exports `handlePermissionEvent` and `createRedisSubscriber`. |
-| `snapshot/deltaScheduler` | Buffers raw Yjs deltas in memory per room. Flushes buffered deltas to the Redis Stream (`room:updates:<roomId>`) every 1 second via XADD. Exposes `getOnSaved` for the compaction worker to invoke the MSG_SNAPSHOT_SAVED broadcast callback. |
-| `snapshot/compactionWorker` | Background worker running every 30 s. Reads delta stream via XRANGE, applies deltas to the last PostgreSQL snapshot in a fresh Y.Doc, persists the merged snapshot via `saveSnapshot`, and trims the stream. Also handles immediate compaction on room teardown. |
-| `snapshot/presenceCounter` | Per-room, per-node Redis heartbeat (`room:heartbeat:<roomId>:<nodeId>`, TTL=60 s, refreshed every 15 s). Enables the compaction worker to detect crashed nodes via key expiry as a complement to the distributed presence counter (`room:connections:<roomId>`). |
+| `infra/eventBus` | Central event bus facilitating loosely-coupled communication between all modules. |
+| `infra/redisEventBridge` | Subscribes to the `room-permissions` Redis channel and bridges events to the internal EventBus. |
+| `ws/connectionManager` | Manages WebSocket lifecycles, authenticates Room Tickets, and fires `CLIENT_CONNECTED`/`CLIENT_DISCONNECTED` events. |
+| `modules/protocol` | Handles bidirectional parsing and generation of Yjs binary protocols (`MSG_SYNC`, `MSG_AWARENESS`, `MSG_PERMISSION_CHANGED`). |
+| `modules/crdt` & `presence` | Maintains the in-memory Y.Doc and Awareness instances, processing updates and forwarding them to peers. |
+| `modules/permission` | Reacts to permission events, updates local `accessMode`, kicks removed users, and fans out access changes. |
+| `modules/persistence` | Handles `snapshotHydrator` (fetch from API), `deltaScheduler` (buffers and writes to Redis Streams), and `compactionWorker` (merges deltas into Postgres). |
 
 ---
 
@@ -253,7 +257,7 @@ All permission endpoints require `hasRole('AUTHENTICATED')`.
 
 ### SyncServerNotifier
 
-A Spring `@Service` that fire-and-forget POSTs to the sync-server's internal HTTP listener after each permission mutation. All methods are `@Async` so the main API response returns immediately. A network failure is logged as a warning but does **not** roll back the committed DB change — the permission will be enforced on the affected user's next WebSocket reconnect.
+A Spring `@Service` that fire-and-forget publishes `PermissionEvent` payloads to the Redis `room-permissions` Pub/Sub channel after each permission mutation. This completely decouples the `api-server` from the `sync-server` instances. All methods are `@Async` so the main API response returns immediately. A network failure is logged as a warning but does **not** roll back the committed DB change — the permission will be enforced on the affected user's next WebSocket reconnect.
 
 ---
 
@@ -472,7 +476,8 @@ sequenceDiagram
     Owner->>api: PATCH /rooms/:id/access-mode {accessMode: PRIVATE}
     Note over api: verifyOwner ✓<br/>room.accessMode = PRIVATE [DB]
     api-->>Owner: 200 OK
-    api--)sync: POST /internal/rooms/:id/permission-changed<br/>{type: access_mode_changed, accessMode: PRIVATE} [@Async]
+    api--)Redis: PUBLISH room-permissions<br/>{type: access_mode_changed, accessMode: PRIVATE} [@Async]
+    Redis--)sync: Subscribe event
 
     Note over sync: room.accessMode = PRIVATE [in-memory]
 
@@ -512,7 +517,8 @@ sequenceDiagram
     Owner->>api: PATCH /rooms/:id/members/:userId {role: VIEWER}
     Note over api: verifyOwner ✓<br/>member.role = VIEWER [DB]
     api-->>Owner: 200 OK (RoomMemberResponse)
-    api--)sync: POST /internal/rooms/:id/permission-changed<br/>{type: member_role_changed, userId, newRole: VIEWER} [@Async]
+    api--)Redis: PUBLISH room-permissions<br/>{type: member_role_changed, userId, newRole: VIEWER} [@Async]
+    Redis--)sync: Subscribe event
 
     Note over sync: targeted — find connections where<br/>claims.userId == targetUserId
     sync->>Target: MSG_PERMISSION_CHANGED (type 5)
@@ -537,7 +543,8 @@ sequenceDiagram
     Owner->>api: DELETE /rooms/:id/members/:userId
     Note over api: verifyOwner ✓<br/>roomMemberRepository.delete() [DB]
     api-->>Owner: 200 OK
-    api--)sync: POST /internal/rooms/:id/permission-changed<br/>{type: member_removed, userId} [@Async]
+    api--)Redis: PUBLISH room-permissions<br/>{type: member_removed, userId} [@Async]
+    Redis--)sync: Subscribe event
 
     Note over sync: find connections where<br/>claims.userId == targetUserId
     sync->>Target: ws.close(4403, "You have been removed")

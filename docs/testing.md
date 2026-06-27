@@ -63,7 +63,28 @@ npm install -D vitest      # already installed
 
 ---
 
-## 2. API Integration Tests (Spring Boot + MockMvc)
+## 2. Sync Server Unit Tests (Vitest)
+
+### What to Test
+
+The sync-server is built on a modular EventBus architecture.
+- **`modules/`**: Unit test individual services (`protocolHandler`, `permissionService`) by passing in a mock `EventBus` and asserting the correct events are emitted or handled.
+- **`infra/`**: Test infrastructure wrappers (like `eventBus` or `redisEventBridge`) in isolation.
+
+### Test File Placement
+
+Co-located with source:
+```
+packages/sync-server/src/
+  modules/
+    permission/permissionService.test.ts
+  infra/
+    eventBus.test.ts
+```
+
+---
+
+## 3. API Integration Tests (Spring Boot + MockMvc)
 
 ### Stack
 
@@ -99,7 +120,7 @@ Every controller method must have tests for:
 
 ---
 
-## 3. API E2E Tests (Hurl)
+## 4. API E2E Tests (Hurl)
 
 [Hurl](https://hurl.dev) scripts run full HTTP flows against a live API server.
 

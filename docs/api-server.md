@@ -18,6 +18,7 @@ com.collab.api
 │   ├── RoomService             Room creation, claiming, lookup, access control
 │   ├── RoomCleanupTask         @Scheduled cleanup of stale unclaimed rooms
 │   ├── SlugGenerator           Human-readable slug generation
+│   ├── SyncServerNotifier      Redis Pub/Sub publisher for permission events
 │   ├── dto/                    RoomResponse, QuickshareResponse, ClaimRequest
 │   └── entity/                 Room, RoomMember JPA entities
 ├── snapshot/

@@ -21,21 +21,22 @@ Browser (Vite + React)
        │ Room Ticket JWT (per-room, 5 min TTL)
        ▼
 sync-server (Node.js + ws)
+  • Modular EventBus architecture
   • Per-room Y.Doc management + snapshot hydration
-  • Room Ticket auth at WebSocket upgrade (verifyRoomTicket)
+  • Room Ticket auth at WebSocket upgrade
   • VIEWER write-blocking (drops MSG_SYNC Update sub-type)
-  • Debounced snapshot persistence (MSG_SNAPSHOT_SAVED)
-  • Real-time permission fan-out (MSG_PERMISSION_CHANGED)
+  • Incremental delta persistence (Redis Streams)
+  • Real-time permission fan-out (Redis Pub/Sub)
        │
-       │ HTTP (x-internal-secret)
+       │ HTTP (snapshots) / Redis (events & deltas)
        ▼
 api-server (Spring Boot 3)
   • Auth (register / login / guest JWT)
   • Room CRUD + claim flow
   • Room Ticket issuance (GET /by-slug/:slug/ticket)
   • Permission management (access mode, member CRUD)
-  • Async sync-server notification (SyncServerNotifier)
-  • Snapshot storage (PostgreSQL)
+  • Async permission events via Redis Pub/Sub
+  • Snapshot storage (PostgreSQL) & compaction worker
 ```
 
 See [`docs/architecture.md`](./docs/architecture.md) for the full breakdown.
