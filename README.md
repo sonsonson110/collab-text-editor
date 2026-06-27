@@ -63,7 +63,7 @@ See [`docs/architecture.md`](./docs/architecture.md) for the full breakdown.
    npm install
    ```
 
-2. **Start the API server** (auto-starts PostgreSQL via Docker Compose integration):
+2. **Start the API server** (auto-starts PostgreSQL and Redis via Docker Compose integration):
 
    ```bash
    cd packages/api-server && ./mvnw spring-boot:run

@@ -18,6 +18,18 @@ services:
         constraints:
           - node.role == manager
 
+  redis:
+    image: 'redis:7-alpine'
+    volumes:
+      - redis-data:/data
+    networks:
+      - collab-net
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+
   api-server:
     # IMAGE_PREFIX is set by the CI workflow to ghcr.io/<github-owner>.
     # For manual deploys, export IMAGE_PREFIX before running docker stack deploy.
@@ -27,6 +39,7 @@ services:
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=password
       - SPRING_DOCKER_COMPOSE_ENABLED=false
+      - SPRING_DATA_REDIS_HOST=redis
       # Override the default hard-coded secrets — set these on the VM
       # or pass them via the CI deploy step (see .github/workflows/deploy.yml).
       - APP_JWT_SECRET=${APP_JWT_SECRET}
@@ -66,6 +79,7 @@ services:
       - INTERNAL_API_SECRET=${APP_INTERNAL_API_SECRET}
       # Base URL the sync-server uses to reach the api-server over the overlay network.
       - API_BASE_URL=http://api-server:8081
+      - REDIS_URL=redis://redis:6379
     networks:
       - collab-net
     deploy:
@@ -73,6 +87,7 @@ services:
 
 volumes:
   postgres-data:
+  redis-data:
 
 networks:
   collab-net:
