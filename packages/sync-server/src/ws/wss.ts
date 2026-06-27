@@ -2,7 +2,6 @@ import { WebSocketServer } from "ws";
 import type { IncomingMessage } from "node:http";
 import { verifyRoomTicket, type TicketClaims } from "../auth";
 import { logger } from "../infra";
-import { WS_CLOSE_UNAUTHORIZED } from "../types";
 
 const PORT = parseInt(process.env.PORT ?? "1234", 10);
 

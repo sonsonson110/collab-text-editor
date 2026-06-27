@@ -4,6 +4,7 @@ import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import { TypedEventEmitter } from "../../infra";
 import { MSG_SYNC } from "../../types";
+import type { WebSocket } from "ws";
 
 interface YjsState {
   doc: Y.Doc;
@@ -17,7 +18,7 @@ export function createYjsService(bus: TypedEventEmitter): void {
 
     const doc = new Y.Doc();
 
-    doc.on("update", (update: Uint8Array, origin: any) => {
+    doc.on("update", (update: Uint8Array, origin: unknown) => {
       // The update comes raw from Yjs. We encode it for WS transmission.
       const msg = encoding.createEncoder();
       encoding.writeVarUint(msg, MSG_SYNC);
@@ -28,14 +29,14 @@ export function createYjsService(bus: TypedEventEmitter): void {
       bus.emit("DOC_UPDATED", {
         roomId,
         update, // raw delta for persistence
-        origin,
+        origin: origin as WebSocket | "redis",
       });
 
       // Also tell WS to broadcast
       bus.emit("OUTBOUND_WS_BROADCAST", {
         roomId,
         message: encoded,
-        excludeWs: origin !== "redis" ? origin : undefined,
+        excludeWs: origin !== "redis" ? (origin as WebSocket) : undefined,
       });
 
       // Fan out to Redis if it originated locally

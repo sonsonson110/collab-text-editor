@@ -4,6 +4,7 @@ import * as decoding from "lib0/decoding";
 import * as Y from "yjs";
 import { TypedEventEmitter } from "../../infra";
 import { MSG_AWARENESS } from "../../types";
+import type { WebSocket } from "ws";
 
 interface PresenceState {
   awareness: awarenessProtocol.Awareness;
@@ -30,7 +31,7 @@ export function createPresenceService(bus: TypedEventEmitter): void {
           updated,
           removed,
         }: { added: number[]; updated: number[]; removed: number[] },
-        origin: any,
+        origin: unknown,
       ) => {
         const changed = [...added, ...updated, ...removed];
         const updateBuf = awarenessProtocol.encodeAwarenessUpdate(
@@ -46,13 +47,13 @@ export function createPresenceService(bus: TypedEventEmitter): void {
         bus.emit("AWARENESS_UPDATED", {
           roomId,
           update: updateBuf,
-          origin,
+          origin: origin as WebSocket | "redis",
         });
 
         bus.emit("OUTBOUND_WS_BROADCAST", {
           roomId,
           message: encoded,
-          excludeWs: origin !== "redis" ? origin : undefined,
+          excludeWs: origin !== "redis" ? (origin as WebSocket) : undefined,
         });
 
         if (origin !== "redis") {

@@ -3,15 +3,6 @@ import { WebSocket } from "ws";
 import { createPermissionService } from "./permissionService";
 import { createEventBus, TypedEventEmitter } from "../../infra";
 import { createRoomManager } from "../room";
-import { WS_CLOSE_FORBIDDEN } from "../../types";
-import * as encoding from "lib0/encoding";
-import { MSG_PERMISSION_CHANGED } from "../../types";
-
-function getPermissionMsgEvent(message: Uint8Array): any {
-  // It's [MSG_PERMISSION_CHANGED, VarString]
-  // We can't easily decode without lib0/decoding, but we just want to know it's a permission message
-  return true;
-}
 
 describe("permissionService", () => {
   let bus: TypedEventEmitter;

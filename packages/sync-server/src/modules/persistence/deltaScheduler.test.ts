@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import * as Y from "yjs";
 import { WebSocket } from "ws";
 import { createEventBus } from "../../infra";
 import { createDeltaScheduler } from "./deltaScheduler";

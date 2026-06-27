@@ -11,7 +11,7 @@ import { WebSocket } from "ws";
 const rooms = new Map<string, Room>();
 
 export function createRoomManager(bus: TypedEventEmitter): void {
-  bus.on("CLIENT_CONNECTED", async ({ roomId, connectionId, ws, claims }) => {
+  bus.on("CLIENT_CONNECTED", async ({ roomId, ws }) => {
     let isNewRoom = false;
     let room = rooms.get(roomId);
 
@@ -42,7 +42,7 @@ export function createRoomManager(bus: TypedEventEmitter): void {
     }
   });
 
-  bus.on("CLIENT_DISCONNECTED", async ({ roomId, connectionId, ws }) => {
+  bus.on("CLIENT_DISCONNECTED", async ({ roomId, ws }) => {
     const room = rooms.get(roomId);
     if (!room) return;
 

@@ -5,7 +5,6 @@ import { saveSnapshot } from "./snapshotPersister";
 import { deletePresenceKey } from "../room";
 import { TypedEventEmitter } from "../../infra";
 import { logger } from "../../infra";
-import { getRoomState } from "../room";
 
 const COMPACTION_INTERVAL_MS = 30_000;
 
