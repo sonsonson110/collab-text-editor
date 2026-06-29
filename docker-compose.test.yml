@@ -34,7 +34,7 @@ services:
       # the containers ourselves in this file.
       SPRING_DOCKER_COMPOSE_ENABLED: "false"
       # Synthetic test-only secrets — never used outside this ephemeral env.
-      APP_JWT_SECRET: "ci-test-jwt-secret-that-is-exactly-32-bytes-long!!"
+      APP_JWT_SECRET: "Y2ktdGVzdC1qd3Qtc2VjcmV0LTMyYnl0ZXMtZml4ZWQ="
       APP_INTERNAL_API_SECRET: "ci-test-internal-api-secret"
       # Redis is not needed for Hurl API contract tests (no sync-server).
       # Disable auto-configuration so the app boots without a Redis connection.
