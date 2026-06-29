@@ -11,7 +11,8 @@
     "build": "npm run build -w @myapp/client",
     "test": "npm run test --workspaces --if-present",
     "test:run": "npm run test:run --workspaces --if-present",
-    "test:api": "bash test-api.sh",
+    "test:api": "docker build -t api-server-test:ci -f packages/api-server/Dockerfile . && docker compose -f docker-compose.test.yml up --abort-on-container-exit --exit-code-from hurl-tests",
+    "test:api:clean": "docker compose -f docker-compose.test.yml down -v",
     "lint": "npm run lint --workspaces --if-present",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down"

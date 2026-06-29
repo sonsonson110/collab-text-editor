@@ -10,17 +10,21 @@ description: When adding new features, fixing bugs, or writing tests.
 - **Mandatory Business Logic Tests:** Any code related to the core business logic (`core/`, `editor/`, data transformations, cursor math) MUST have unit tests in a co-located `*.test.ts` file.
 - **Pure Functions:** Core tests must run in isolation without React/DOM dependencies. Each `it()` block creates its own fixtures.
 
-## 2. Spring Boot Integration Tests
+## 2. API Contract & E2E Testing (Hurl + Docker)
 
-- **No Slices:** Use `@SpringBootTest` with `@AutoConfigureMockMvc` and real PostgreSQL (no `@WebMvcTest` or H2 databases).
-- **Test Isolation:** Use `@Transactional` on the test class for automatic rollback.
-- **Mandatory Scenarios:** Every controller endpoint MUST test 4 paths:
-  1. Happy Path (Valid input, expected HTTP status)
-  2. Validation Failure (400 Bad Request)
-  3. Auth Guard (401 Unauthorized)
-  4. Domain Error (404 Not Found, 409 Conflict, etc.)
+Instead of relying on `@SpringBootTest` slices with MockMvc, we use a fully hermetic Docker Compose harness to validate the real built API image via HTTP.
 
-## 3. API E2E Testing (Hurl)
+```mermaid
+flowchart LR
+    A[Build API Image] --> B[docker-compose.test.yml]
+    B --> C[(PostgresDB)]
+    B --> D[api-server]
+    B --> E[hurl-tests]
+    E -- HTTP --> D
+    D -- JDBC --> C
+```
 
-- Every new Spring Boot controller or major user journey must include declarative `.hurl` tests in `packages/api-server/hurl/`.
-- Use interpolated variables (e.g., `{{suffix}}`) for idempotency during repeated CI runs.
+- **No SpringBootTests for Controllers:** Coverage is owned entirely by `hurl` testing the real servlet layer running in Docker.
+- **Hermetic Harness:** Tests run inside `docker-compose.test.yml` using `postgres:16`, the real `api-server` image, and the official `hurl` runner.
+- **Adding Tests:** Every new controller endpoint or user journey must be covered by a `.hurl` file in `packages/api-server/hurl/`. Tests should cover Happy Path, Validation Failures (400), Auth Guards (401/403), and Domain Errors (404/409).
+- **Local Execution:** Run `npm run test:api` to build the test image and execute the test harness locally. Use `npm run test:api:clean` to teardown the harness.

@@ -10,8 +10,7 @@
 npm run test:run         # Client unit/component tests (Vitest, all workspaces)
 npm run test:api         # API E2E tests (Hurl, against local Spring Boot on :8081)
 
-# Spring Boot integration tests
-cd packages/api-server && ./mvnw test
+npm run test:api:clean   # Tear down the API test harness after testing
 ```
 
 ---
@@ -84,45 +83,24 @@ packages/sync-server/src/
 
 ---
 
-## 3. API Integration Tests (Spring Boot + MockMvc)
+## 3. API Contract & E2E Testing (Hurl + Docker)
 
-### Stack
+[Hurl](https://hurl.dev) scripts run full HTTP flows against the real Docker API image inside a hermetic Compose network.
 
-- `@SpringBootTest` — full application context (no `@WebMvcTest`).
-- `@AutoConfigureMockMvc` — injects `MockMvc`.
-- `@Transactional` — auto-rollback per test.
-- Real PostgreSQL via Docker Compose integration (no H2).
-
-### File Placement
-
-```
-packages/api-server/src/test/java/com/collab/api/
-  auth/AuthControllerTest.java       ← one class per controller
-  room/RoomControllerTest.java
+```mermaid
+flowchart LR
+    A[Build API Image] --> B[docker-compose.test.yml]
+    B --> C[(PostgresDB)]
+    B --> D[api-server]
+    B --> E[hurl-tests]
+    E -- HTTP --> D
+    D -- JDBC --> C
 ```
 
-### Naming Convention
+### Stack & Infrastructure
 
-```
-<action>_<condition>_<expectedOutcome>
-```
-
-Examples: `register_happyPath_returnsCreatedWithToken`, `createRoom_unauthenticated_returns401`.
-
-### Coverage Per Endpoint
-
-Every controller method must have tests for:
-
-1. **Happy path** — correct status and response.
-2. **Validation failure** — `400` with `fieldErrors`.
-3. **Auth guard** — `401` without token.
-4. **Domain error** — `409` (duplicate), `404` (not found), etc.
-
----
-
-## 4. API E2E Tests (Hurl)
-
-[Hurl](https://hurl.dev) scripts run full HTTP flows against a live API server.
+- **No SpringBootTests for Controllers:** Coverage is owned entirely by `hurl` testing the real servlet layer running in Docker.
+- **Hermetic Harness:** Tests run inside `docker-compose.test.yml` using `postgres:16`, the built `api-server` image, and the official `hurl` runner.
 
 ### File Placement
 
@@ -136,12 +114,12 @@ packages/api-server/hurl/
 ### Running
 
 ```bash
-npm run test:api                              # local dev (port 8081)
-API_HOST=http://localhost:8080 npm run test:api  # Docker Compose (Nginx proxy)
+npm run test:api         # Builds the local image and runs the test harness
+npm run test:api:clean   # Tears down the test harness and database volume
 ```
 
 ### Conventions
 
 - Interpolate `{{suffix}}` into test data (emails, names) for idempotent reruns.
 - Flow scripts (`flow_*.hurl`) model end-to-end user journeys.
-- `--variable suffix=...` is auto-generated with a timestamp by `test-api.sh`.
+- Every new controller endpoint must be covered by a `.hurl` file handling Happy Path, Validation Failure, Auth Guard, and Domain Error.
