@@ -36,8 +36,8 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install sync-server dependencies
-        run: npm ci --workspace=@myapp/sync-server
+      - name: Install Node.js dependencies
+        run: npm ci
 
       - name: Lint sync-server
         run: npm run lint --workspace=@myapp/sync-server
