@@ -1,0 +1,75 @@
+# Hermetic integration test harness for CI.
+#
+# Runs the real api-server Docker image (built in a prior CI job) against
+# a fresh Postgres instance, then executes the Hurl API contract tests.
+#
+# Usage in CI:
+#   docker compose -f docker-compose.test.yml up \
+#     --abort-on-container-exit --exit-code-from hurl-tests
+#
+# The api-server image must be pre-loaded into the local Docker daemon
+# as "api-server-test:ci" before running this file.
+
+services:
+  postgres:
+    image: "postgres:16"
+    environment:
+      POSTGRES_DB: collab-editor
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d collab-editor"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  api-server:
+    image: api-server-test:ci
+    environment:
+      # Point at the compose-internal Postgres service
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/collab-editor
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: password
+      # Disable Spring Boot's built-in Docker Compose integration — we manage
+      # the containers ourselves in this file.
+      SPRING_DOCKER_COMPOSE_ENABLED: "false"
+      # Synthetic test-only secrets — never used outside this ephemeral env.
+      APP_JWT_SECRET: "ci-test-jwt-secret-that-is-exactly-32-bytes-long!!"
+      APP_INTERNAL_API_SECRET: "ci-test-internal-api-secret"
+      # Redis is not needed for Hurl API contract tests (no sync-server).
+      # Disable auto-configuration so the app boots without a Redis connection.
+      SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # TCP probe — confirms the JVM is listening on 8081.
+      # A shell-form healthcheck avoids requiring curl/wget in the JRE Alpine image.
+      test: ["CMD-SHELL", "nc -z localhost 8081 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+
+  hurl-tests:
+    image: ghcr.io/orange-opensource/hurl:latest
+    volumes:
+      - ./packages/api-server/hurl:/hurl:ro
+    depends_on:
+      api-server:
+        condition: service_healthy
+    # Wait for Flyway migrations to complete after the TCP port opens.
+    # The healthcheck confirms the JVM is up, but Flyway may still be running.
+    # A brief sleep handles the gap.
+    entrypoint: >
+      sh -c '
+        echo "Waiting for Flyway migrations to settle..."
+        sleep 5
+        SUFFIX=$$(cat /dev/urandom | tr -dc a-z0-9 | fold -w 8 | head -n 1)
+        echo "Running Hurl tests with suffix=$$SUFFIX"
+        hurl --test
+          --variable host=http://api-server:8081
+          --variable suffix=$$SUFFIX
+          --variable internal_secret=ci-test-internal-api-secret
+          --glob "/hurl/*.hurl"
+      '
